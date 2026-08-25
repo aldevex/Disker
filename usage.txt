@@ -1,0 +1,70 @@
+// Add: hidden sectors, specific reserved sectors
+
+disker // or "disker do commands.txt"
+// Commandline or commands.txt:
+// Comments are ignored in both file and actual commandline
+// Disker should ignore upper/lower case in commands
+
+// Automatic "yes" to any question by Disker
+allyes
+// Use "manyes" to return to manual "yes"
+
+// Consider gb/mb/etc. as gib/mib/etc.
+binary
+// Use "decimal" for actual gb/mb/etc.
+
+// Opening virtual disk image file
+openvd x.img size 32gib sectsize 4096
+// OR "openvd x.img sectors 8,388,608 sectsize 4096"
+// Use "openphd" to open a physical disk
+
+// Setting partition system
+format gpt parts 3
+// Also available: format mbr & format biosgpt
+
+// Editing partitions
+// can use ^ or \ for continuing on new line
+// spc = sectors per cluster
+// 524,288 4096-byte sectors = 2 GiB
+part 1 fs FAT32  size 16gib \
+                    spc 8
+part 2 fs FAT32  sects 524,288  label "OS Partition" ^
+                    type bdp  guid "EE-E-EE-E-EEEEE"  align 1M
+part 3 fs FAT32  clusts 524,288  spc 1
+
+// Setting bootloader code
+boot mbr boot_mbr.bin
+
+// sectors
+dump sect 0 sector.txt // Dump sector 0 into file
+dump sectr 40.255 sectors.txt // Dump sectors 40-255 into file
+replsect 0 sector0.bin // Set sector 0 from file
+replsect 0.2 sectors.bin // Set sectors 0-2 from file
+
+openpart 1
+boot vbr boot_vbr.bin
+boot uefi_default boot_uefi.EFI
+
+// Setting UEFI bootloader code for specific OS path
+addfile "EFI\ShitOS\boot\boot_x64.EFI" boot_uefi.EFI
+cd \EFI\ShitOS
+ls
+
+// More file stuff
+addfile README.md // adds disk cd\README.md from environment cd\README.MD
+remfile README.md
+mkdir EFI
+mv README.md EFI/README.md
+cp README.md EFI/README.md
+
+// Get info about set/open subjects
+whats boot
+whats parts
+whats open
+
+// Save disk or disk image
+save
+// Exit Disker: stop/exit/quit
+stop
+
+// If you exit without saving it will notify you

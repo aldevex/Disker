@@ -1,0 +1,33 @@
+
+- Make generic constructors/setters/getters for all partition structs with templates
+    (already added some getters in MBRns::PartitionEntry, copy & remove them)
+
+- Fix GPT header constructor
+- Fix FAT32 fields and constructor
+- Make passing null to constructors = empty/default array
+
+- Add FAT32 file system structures (VBR, FSInfo, and FAT)
+
+- Finalize instruction handling: divide parseIns() code and finish it
+
+
+
+
+
+
+- Add actually writing img files
+- Add opening img files and editing them
+
+- Test everything
+- Add Windows & Linux actual disk formatting ability (with a bunch of safety measures)
+
+- Add warning on exit without save
+    & on attempting to edit real disks (especially when theyre partitioned and/or have files)
+
+- Add notifying user for standard-breaking but practically functional choices
+- Add way to save commands from commandline into a file for reuse
+    (remove unnecessary instructions whose subjects get overwritten after)
+
+- Add code documents, code comments, help string (both direct argument or instruction), usage.txt
+
+- Use some hash maps instead of if statements everywhere
