@@ -2,7 +2,9 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
-#include "../utils.hpp"
+#include <iostream>
+#include <span>
+#include "../algos/utils.hpp"
 // MBR (Namespace)
 namespace MBRns {
 #pragma pack(push, 1)
@@ -23,12 +25,6 @@ enum class PartitionType : uint8_t
     EFISystemPartition = 0xEF, // EFI System Partition (ESP)
 };
 
-// CHS Segment
-enum class CHSSeg : uint8_t
-{
-    Cylinder, Head, Sector
-};
-
 struct PartitionEntry
 {
     uint8_t bootIndicator;
@@ -43,10 +39,10 @@ struct PartitionEntry
     uint32_t sectorCountLBA;
 
     PartitionEntry() = default;
-    PartitionEntry(bool bootable, PartitionType type,
-                        uint32_t startingLBA, uint32_t sectorCountLBA,
-                        uint8_t startingSector, uint8_t startingHead, uint16_t startingCylinder,
-                        uint8_t endingSector, uint8_t endingHead, uint16_t endingCylinder)
+    PartitionEntry(PartitionType type, bool bootable,
+                    uint32_t startingLBA, uint32_t sectorCountLBA,
+                    uint8_t startingSector, uint8_t startingHead, uint16_t startingCylinder,
+                    uint8_t endingSector, uint8_t endingHead, uint16_t endingCylinder)
     {
         bootIndicator = (bootable)? (uint8_t)BootIndicator::Active : (uint8_t)BootIndicator::Inactive;
 
@@ -63,54 +59,6 @@ struct PartitionEntry
         this->startingLBA = startingLBA;
         this->sectorCountLBA = sectorCountLBA;
     }
-
-    bool getIsBootable()
-    {
-        return ((BootIndicator)bootIndicator == BootIndicator::Active);
-    }
-
-    // Cylinder is 10-bits be careful
-    uint16_t getStartingCHSSeg(CHSSeg segment)
-    {
-        if (segment == CHSSeg::Head) return (startingCHS[0]);
-        else if (segment == CHSSeg::Sector) return (startingCHS[1] & 0b111111);
-        else if (segment == CHSSeg::Cylinder)
-            return ( (uint16_t)startingCHS[2] | (uint16_t(startingCHS[1] & 0b11000000) << 2) );
-    }
-
-    // Cylinder is 10-bits be careful
-    uint16_t getEndingCHSSeg(CHSSeg segment)
-    {
-        if (segment == CHSSeg::Head) return (endingCHS[0]);
-        else if (segment == CHSSeg::Sector) return (endingCHS[1] & 0b111111);
-        else if (segment == CHSSeg::Cylinder)
-            return ( (uint16_t)endingCHS[2] | (uint16_t(endingCHS[1] & 0b11000000) << 2) );
-    }
-
-    PartitionType getPartitionType()
-    {
-        return (PartitionType)partitionType;
-    }
-    
-    size_t getCHSSegCount(CHSSeg segment)
-    {
-        
-    }
-
-    size_t getStartLBA()
-    {
-
-    }
-
-    size_t getEndLBA()
-    {
-        
-    }
-
-    size_t getLBASectorCount()
-    {
-        return sectorCountLBA;
-    }
 };
 
 struct MBRData
@@ -119,10 +67,16 @@ struct MBRData
     PartitionEntry partitionTable[4] = {};
     uint16_t signature = 0xAA55;
 
-    MBRData(uint8_t* pCode446, PartitionEntry* pPartitionTable4)
+    MBRData(const uint8_t* pCode446, const PartitionEntry* pPartitionEntries4)
     {
         if (pCode446 != nullptr) memcpy(code, pCode446, 446);
-        if (pPartitionTable4 != nullptr) memcpy(partitionTable, pPartitionTable4, sizeof(PartitionEntry) *4);
+        
+        if (pPartitionEntries4 == nullptr)
+        {
+            std::cerr << "pPartitionEntries4 = nullptr given to MBRData constructor\n";
+            exit(EXIT_FAILURE);
+        }
+        else memcpy(partitionTable, pPartitionEntries4, sizeof(PartitionEntry) *4);
     }
 };
 

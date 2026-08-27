@@ -5,6 +5,7 @@
 #include <cstring>
 #include <chrono>
 #include <random>
+#include <span>
 #include "../utils.hpp"
 namespace GPTns {
 #pragma pack(push, 1)
@@ -14,9 +15,8 @@ namespace GPTns {
 // Sector 1: Primary GPT Header
 // Sector 2-33: GPT Partition Entry Array
 // Sector 34-(N-34): Usable LBA space:
-//   Sector 34-2047: Alignment Gap
-//   Sector 2048+: ESP (Possible Stage 2 for BIOS environment)
-//   Sector (After ESP End)+: OS Partition
+//   Sector 34-2047: Alignment Gap (for performance)
+//   Sector 2048+: Data
 // Sector (N-33)-(N-2): Backup GPT Partition Entry Array
 // Sector (N-1): Backup GPT Header
 
@@ -194,19 +194,19 @@ const struct
 
 enum class PEAttributeFLag : uint64_t
 {
-    SystemPartition = (1ULL << 0), // Critical system partition (Bit 0)
-    IgnoreByEFI = (1ULL << 1), // Firmware skips booting (Bit 1)
-    LegacyBootable = (1ULL << 2) // Legacy BIOS active flag (Bit 2)
+    PlatformRequired = (1ULL << 0), // Critical system-required partition
+    EFIIgnore = (1ULL << 1), // EFI ignoes partition for bootloader search
+    ActiveFlag = (1ULL << 2) // Legacy BIOS bootable (for partition with BIOS stage 2 code)
 };
 
 struct PartitionEntry
 {
-    MSGUID partitionTypeGUID = UNDEFINED_GUID; // OS-dependant, can be anything
+    MSGUID partitionTypeGUID = UNDEFINED_GUID;
     MSGUID uniquePartitionGUID = UNDEFINED_GUID;
     uint64_t firstLBA;
     uint64_t lastLBA;
     uint64_t attributeFlags;
-    uint16_t partitionName16[36]; // Null-terminated
+    uint16_t partitionName16[36] = {}; // Null-terminated
     // Spec allows 36 characters without null but that's dangerous!
 
     PartitionEntry() = default;
@@ -218,15 +218,16 @@ struct PartitionEntry
         this->firstLBA = firstLBA;
         this->lastLBA = lastLBA;
         this->attributeFlags = attributeFlags;
-        for (size_t i = 0; i < 36; i++)
-        {
-            if (i == 35 || partitionName_UTF16_max35[i] == '\0')
+        if (partitionName_UTF16_max35 != nullptr)
+            for (size_t i = 0; i < 36; i++)
             {
-                for (; i < 36; i++) this->partitionName16[i] = u'\0';
-                break;
+                if (i == 35 || partitionName_UTF16_max35[i] == '\0')
+                {
+                    for (; i < 36; i++) this->partitionName16[i] = u'\0';
+                    break;
+                }
+                else this->partitionName16[i] = partitionName_UTF16_max35[i];
             }
-            else this->partitionName16[i] = partitionName_UTF16_max35[i];
-        }
     }
 };
 
@@ -239,32 +240,38 @@ struct Header
     uint32_t reserved = 0;
     uint64_t myLBA; // Must be set to header LBA
     uint64_t alternateLBA; // Must be set to header opposite LBA (backup for og, og for backup)
-    uint64_t firstUsableLBA; // Must be set
+    uint64_t firstUsableLBA; // Must be set to first LBA usable by partitions
     uint64_t lastUsableLBA; // Must be set to (Total -34)
     MSGUID diskGUID = UNDEFINED_GUID; // Must be set to a random GUID (must be identical in backup header)
     uint64_t partitionEntryLBA; // Must be set to parition entry array start
     uint32_t numberOfPartitionEntries; // Commonly 128 but can be anything
     uint32_t sizeOfPartitionEntry = 128; // Can actually be >128 but that's for niche custom usage
     uint32_t partitionEntryArrayCRC32; // Must be set to partiton array CRC32 checksum
-    uint8_t reservedBlock[420] = {}; // HEEEEEEEEEELP THIS IS SUPPOSED TO BE TILL END OF SECTOR
-    // WHAT IF THE SECTOR IS 4096 BYTES THEN IT WILL BE MORE THAN 420 ZERO BYTES
 
-    Header(uint64_t totalSectors, bool backupHeader,
-                PartitionEntry* partitionEntryArray, MSGUID diskGUID)
+    Header(MSGUID diskGUID, bool backupHeader, std::span<const PartitionEntry> sPartitionEntries,
+            uint64_t sectorSize, uint64_t totalSectors, uint64_t firstUsableSectorLBA)
     {
+        if (sPartitionEntries.data() == nullptr || sPartitionEntries.size() == 0)
+        {
+            std::cerr << "null/empty sPartitionEntries given to GPT Header constructor\n";
+            exit(EXIT_FAILURE);
+        }
+        // Partition Entry Array Sector Count
+        uint64_t PEArraySectorCount = (sPartitionEntries.size() *128) / sectorSize;
         memcpy(&signature, "EFI PART", 8);
 
         myLBA = (!backupHeader)? 1  : totalSectors -1;
         alternateLBA = (!backupHeader)? totalSectors -1  : 1;
 
-        firstUsableLBA = ; // Must be set
-        lastUsableLBA = totalSectors -34; // nooooooooo 34 wont always work !!!!!!!!!!!!!!!!!!!!!!!!!!
+        firstUsableLBA = firstUsableSectorLBA;
+        lastUsableLBA = totalSectors -1 -PEArraySectorCount -1; // -header -array -1
 
         this->diskGUID = diskGUID;
-        partitionEntryLBA = (!backupHeader)? 2  : totalSectors -33;
-        numberOfPartitionEntries = ;
+        partitionEntryLBA = (!backupHeader)? 2  : totalSectors -1 -PEArraySectorCount; // -header -array
+        numberOfPartitionEntries = sPartitionEntries.size();
 
-        partitionEntryArrayCRC32 = Utils::crc32(partitionEntryArray, 128*128);
+        partitionEntryArrayCRC32 = Utils::crc32(sPartitionEntries.data(),
+                                                sPartitionEntries.size() *128);
         headerCRC32 = 0;
         headerCRC32 = Utils::crc32(this, 92);
     }

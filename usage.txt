@@ -18,6 +18,8 @@ openvd x.img size 32gib sectsize 4096
 // OR "openvd x.img sectors 8,388,608 sectsize 4096"
 // Use "openphd" to open a physical disk
 
+
+
 // Setting partition system
 format gpt parts 3
 // Also available: format mbr & format biosgpt

@@ -1,23 +1,19 @@
 
-- Make generic constructors/setters/getters for all partition structs with templates
-    (already added some getters in MBRns::PartitionEntry, copy & remove them)
-
-- Fix GPT header constructor
-- Fix FAT32 fields and constructor
-- Make passing null to constructors = empty/default array
-
-- Add FAT32 file system structures (VBR, FSInfo, and FAT)
-
-- Finalize instruction handling: divide parseIns() code and finish it
-
-
-
-
-
-
-- Add actually writing img files
+The code is a mess now:
+- parseIns(): Divide into lambdas, add multi-line instruction parsing, finish openvd instruction
+- Everywhere: Use Utils::ErrorState enum instead of random success/failure bools
+- generic.hpp: Make PartitionInfo struct work well for both MBR and GPT formats
+- MBR & GPT: add partition methods to get PartitionInfo struct
+- FAT32: Add fs structures (VBR, FSInfo, and FAT)
+- Everywhere: Use unicode and read files as binary std::vector,
+                use custom string funcs accordingly
 - Add opening img files and editing them
 
+
+
+
+
+For later:
 - Test everything
 - Add Windows & Linux actual disk formatting ability (with a bunch of safety measures)
 
@@ -31,3 +27,7 @@
 - Add code documents, code comments, help string (both direct argument or instruction), usage.txt
 
 - Use some hash maps instead of if statements everywhere
+
+- Add saving variables into Disker for quick and easy reuse
+
+- Improve disk format summary

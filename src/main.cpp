@@ -1,30 +1,21 @@
 #include <cstdio>
 #include <string>
 #include <iostream>
+#include "structs/generic.hpp"
 #include "structs/mbr.hpp"
 //#include "structs/gpt.hpp"
 //#include "structs/fat32.hpp"
+#include "algos/cmd.hpp"
 
-enum class Format
-{
-    MBR, GPT
-};
-
+// Absolutely no one except applyIns may write to this directly
 struct {
     bool allYes = false;
     bool binaryUnits = true;
 
-    struct {
-        std::string name = "";
-        bool isRealDisk = true; // True default for safety
-        size_t size = 0, sectorCount = 0, sectorSize = 0;
-        Format format = Format::MBR;
-    } disk;
-
-    struct {
-        MBRns::MBRData data;
-    } MBR;
-
+    Generic::Disk disk;
+    //MBRns::MBRData MBR;
+    //GPTns::GPTCollection GPTColl;
+    
     struct {
         // Stuff
     } GPT;
@@ -34,8 +25,6 @@ struct {
     } partitionData;
 } globalState;
 
-#include "algos/cmd.hpp"
-
 void applyIns(const Cmd::Ins& ins)
 {
     using namespace Cmd;
@@ -43,8 +32,8 @@ void applyIns(const Cmd::Ins& ins)
     {
     case InsType::None:
         break;
-    case InsType::Skip:
-        std::cerr << "Skip instruction type given to applyIns, it should be sent as None\n";
+    case InsType::Error:
+        std::cerr << "Error instruction type given to applyIns, it should be sent as None\n";
         exit(EXIT_FAILURE);
         break;
     case InsType::AllYes:
@@ -55,6 +44,9 @@ void applyIns(const Cmd::Ins& ins)
         break;
     case InsType::Exit:
         exit(EXIT_SUCCESS);
+        break;
+    case InsType::OpenVD:
+        globalState.disk = Generic::Disk(ins.op1, false, );
         break;
     default:
         std::cerr << "unsupported instruction type given to applyIns (" << (uint16_t)ins.type << ")\n";
