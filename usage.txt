@@ -1,72 +1,96 @@
-// Add: hidden sectors, specific reserved sectors
+# Add: hidden sectors, specific reserved sectors,
+#      setting sectors to (real) files directly, dumping sectors into (real) files
 
-disker // or "disker do commands.txt"
-// Commandline or commands.txt:
-// Comments are ignored in both file and actual commandline
-// Disker should ignore upper/lower case in commands
+# Methods to use Disker:
+# 1. "disker do <commands file>"
+# 2. "disker - <command 1> - <command 2> - <command 3>..."
+# 3. "disker" then write input commands one by one
 
-// Automatic "yes" to any question by Disker
+# Comments are ignored in command files
+# Disker should ignore upper/lower case in commands
+
+# Automatic "yes" to any question by Disker
 allyes
-// Use "manyes" to return to manual "yes"
+# Use "manyes" to return to manual "yes"
 
-// Consider gb/mb/etc. as gib/mib/etc.
+# Consider gb/mb/etc. as gib/mib/etc.
 binary
-// Use "decimal" for actual gb/mb/etc.
+# Use "decimal" for actual gb/mb/etc.
 
-// Opening virtual disk image file
+# Opening virtual disk image file
 openvd x.img size 32gib sectsize 4096
-// OR "openvd x.img sectors 8,388,608 sectsize 4096"
-// Use "openphd" to open a physical disk
+# OR "openvd x.img size 32gib sectsize 4096"
+# Use "openphd" to open a physical disk
 
 
 
-// Setting partition system
+# Setting partition system
 format gpt parts 3
-// Also available: format mbr & format biosgpt
+# Also available: format mbr & format biosgpt
 
-// Editing partitions
-// can use ^ or \ for continuing on new line
-// spc = sectors per cluster
-// 524,288 4096-byte sectors = 2 GiB
+# Editing partitions
+# can use \ for continuing on new line (in files only)
+# spc = sectors per cluster
+# 524,288 4096-byte sectors = 2 GiB
 part 1 fs FAT32  size 16gib \
                     spc 8
 part 2 fs FAT32  sects 524,288  label "OS Partition" ^
                     type bdp  guid "EE-E-EE-E-EEEEE"  align 1M
 part 3 fs FAT32  clusts 524,288  spc 1
 
-// Setting bootloader code
+# Setting MBR bootloader code
 boot mbr boot_mbr.bin
 
-// sectors
-dump sect 0 sector.txt // Dump sector 0 into file
-dump sectr 40.255 sectors.txt // Dump sectors 40-255 into file
-replsect 0 sector0.bin // Set sector 0 from file
-replsect 0.2 sectors.bin // Set sectors 0-2 from file
-
+# Setting partition bootloader code
 openpart 1
 boot vbr boot_vbr.bin
 boot uefi_default boot_uefi.EFI
 
-// Setting UEFI bootloader code for specific OS path
+# Setting UEFI bootloader code for specific OS path
 addfile "EFI\ShitOS\boot\boot_x64.EFI" boot_uefi.EFI
 cd \EFI\ShitOS
 ls
 
-// More file stuff
-addfile README.md // adds disk cd\README.md from environment cd\README.MD
+# More file stuff
+# Base file operation names:
+#   set: Used for creation and editing content of files and directories
+#   del: Used for deletion of files and directories
+#   copy: Used for copying files and directories
+#   move: Used for moving files and directories
+#   rename: Used for renaming files and directories
+#
+#   list: list files and directories in the current directory
+#   cd: change the current directory
+
+# Aliases: YK WHAT ************** fuck aliases just use base ones lol **************
+#   touch: for file creation
+#   mkdir: for directory creation
+#   rm: for file deletion
+#   rmdir: for directory deletion
+#   mv: for file/directory moving
+#   cp: for file/directory copying
+
+addfile README.md # adds disk cd\README.md from environment cd\README.MD
 remfile README.md
 mkdir EFI
 mv README.md EFI/README.md
 cp README.md EFI/README.md
 
-// Get info about set/open subjects
+# Get info about set/open subjects
 whats boot
 whats parts
 whats open
 
-// Save disk or disk image
+# Save disk or disk image
 save
-// Exit Disker: stop/exit/quit
+# Close opened disk
+#   (useful for running initial command files before manual instructions without exiting Disker)
+close
+# Exit Disker: stop/exit/quit
+#   Only allowed in direct CLI not in files
 stop
 
-// If you exit without saving it will notify you
+# If you exit without saving it will notify you
+# Use "do" instruction (allowed only in direct CLI instructions)
+#   to run a file during operation
+#   e.g. "do specific_commands_3.txt"

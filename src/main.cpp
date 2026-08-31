@@ -7,8 +7,12 @@
 //#include "structs/fat32.hpp"
 #include "algos/cmd.hpp"
 
-// Absolutely no one except applyIns may write to this directly
-struct {
+// Only main() and applyIns() may access this directly
+static struct _StateStruct
+{
+friend int main(int argC, char** argV);
+friend void applyIns(const Cmd::Ins& ins);
+private:
     bool allYes = false;
     bool binaryUnits = true;
 
@@ -23,33 +27,35 @@ struct {
     struct {
         // More stuff
     } partitionData;
-} globalState;
+
+    // Struct name and constructor required to find field constructors' issues
+    //   because Mr. Stroustrup has made a great programming language
+    _StateStruct() {}
+} state;
 
 void applyIns(const Cmd::Ins& ins)
 {
     using namespace Cmd;
+
     switch (ins.type)
     {
     case InsType::None:
         break;
-    case InsType::Error:
-        std::cerr << "Error instruction type given to applyIns, it should be sent as None\n";
-        exit(EXIT_FAILURE);
+    case InsType::SetYes:
+        state.allYes = ins.info.switchValue;
         break;
-    case InsType::AllYes:
-        globalState.allYes = true;
+    case InsType::SetBinary:
+        state.binaryUnits = ins.info.switchValue;
         break;
-    case InsType::ManYes:
-        globalState.allYes = false;
+    case InsType::OpenDisk:
+        // Or make an open disk function ig better
+        state.disk = Generic::Disk(ins.info.openDisk.pathView, ins.info.openDisk.isReal, );
         break;
     case InsType::Exit:
         exit(EXIT_SUCCESS);
         break;
-    case InsType::OpenVD:
-        globalState.disk = Generic::Disk(ins.op1, false, );
-        break;
     default:
-        std::cerr << "unsupported instruction type given to applyIns (" << (uint16_t)ins.type << ")\n";
+        std::cerr << "unprogrammed instruction type given to applyIns (" << (uint16_t)ins.type << ")\n";
         exit(EXIT_FAILURE);
         break;
     }

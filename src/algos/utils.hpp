@@ -6,6 +6,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 namespace Utils {
 
 std::string lowerStr(std::string_view view)
@@ -20,17 +21,20 @@ enum class SizeSig : uint64_t
     NoNumber = UINT64_MAX, // No number at start of string
     InvalidNumber = (UINT64_MAX -1), // Failed to convert the raw number
     NoUnit = (UINT64_MAX -2), // No unit after number when expected
-    InvalidUnit = (UINT64_MAX -3), // Invalid unit after number (e.g. "32volts")
+    UnacceptableZero = (UINT64_MAX -3), // The number is zero when zero is unacceptable
     TooBigResult = (UINT64_MAX -4), // The result is above SIZE_MAX and/or is inside this enum
+    InvalidUnit = (UINT64_MAX -5), // Invalid unit after number (e.g. "32volts")
 
-    LEAST_ERROR = TooBigResult
+    LEAST_ERROR = InvalidUnit // Smallest enum value
 };
 
 constexpr uint64_t CONVSIZE_MAX = (uint64_t)SizeSig::LEAST_ERROR -1;
 
 // Converts strings to unsigned integer with multiplying unit, e.g. "400", "32gib", "6mb", "40b"
 // May return a specific enum value in the uint64_t on failure (check with SizeSig enum)
-uint64_t strToSize(std::string_view view, bool unitExpected, bool alwaysBinaryUnits)
+// Does NOT print error messages on failure
+// Easy way to remember parameter order: "0 then 2 (binary) then unit"
+uint64_t strToSize(std::string_view view, bool zeroIsUnacceptable, bool alwaysBinaryUnits, bool unitExpected)
 {
     std::string copy; // String copy to ensure null terminator + remove commas
     // Ignore: commas, single quotes, and underscore off the number
@@ -48,6 +52,8 @@ uint64_t strToSize(std::string_view view, bool unitExpected, bool alwaysBinaryUn
     else if (!unitExpected && endPtr != '\0') return (uint64_t)SizeSig::InvalidNumber;
     // No unit
     else if (unitExpected && endPtr == '\0') return (uint64_t)SizeSig::NoUnit;
+    // Unacceptable zero
+    else if (rawNum == 0) return (uint64_t)SizeSig::UnacceptableZero;
 
     // Convert according to unit
     static auto multiply = [&](uint64_t multiplier, bool shiftNotMultiply) -> uint64_t
@@ -89,6 +95,7 @@ uint64_t strToSize(std::string_view view, bool unitExpected, bool alwaysBinaryUn
 }
 
 // Instead of a random "true" that could mean either success or failure
+// Mostly important in return values to stop ambiguity
 enum class ErrorState : uint8_t
 {
     Failure, Success, NotFound
@@ -96,20 +103,20 @@ enum class ErrorState : uint8_t
 
 // Returns read buffer and error state
 // It prints an error message on failure too
-std::pair<std::string, ErrorState> readFile(const char* path)
+std::pair<std::vector<uint8_t>, ErrorState> readFile(const char* path)
 {
     FILE* file = fopen(path, "rb");
     if (file == nullptr)
     {
         std::cerr << "failed to open file for reading \"" << path << "\"\n";
-        return {"", ErrorState::Failure};
+        return {{}, ErrorState::Failure};
     }
 
     if (fseek(file, 0, SEEK_END) != 0)
     {
         std::cerr << "failed to seek file end for reading \"" << path << "\"\n";
         fclose(file);
-        return {"", ErrorState::Failure};
+        return {{}, ErrorState::Failure};
     }
 
     size_t fileSize = 0;
@@ -120,7 +127,7 @@ std::pair<std::string, ErrorState> readFile(const char* path)
         {
             std::cerr << "failed to get file size for reading \"" << path << "\"\n";
             fclose(file);
-            return {"", ErrorState::Failure};
+            return {{}, ErrorState::Failure};
         }
         else fileSize = (size_t)longSize;
     }
@@ -129,18 +136,19 @@ std::pair<std::string, ErrorState> readFile(const char* path)
     {
         std::cerr << "failed to reset file seek pointer for reading \"" << path << "\"\n";
         fclose(file);
-        return {"", ErrorState::Failure};
+        return {{}, ErrorState::Failure};
     }
 
-    std::string buffer(fileSize, '\0');
+    std::vector<uint8_t> buffer;
     if (fileSize > 0)
     {
+        buffer.resize(fileSize);
         size_t readSize = fread(buffer.data(), 1, fileSize, file);
         if (readSize != fileSize)
         {
             std::cerr << "failed to read file \"" << path << "\"\n";
             fclose(file);
-            return {"", ErrorState::Failure};
+            return {{}, ErrorState::Failure};
         }
     }
 

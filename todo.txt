@@ -1,33 +1,51 @@
 
-The code is a mess now:
-- parseIns(): Divide into lambdas, add multi-line instruction parsing, finish openvd instruction
-- Everywhere: Use Utils::ErrorState enum instead of random success/failure bools
-- generic.hpp: Make PartitionInfo struct work well for both MBR and GPT formats
-- MBR & GPT: add partition methods to get PartitionInfo struct
-- FAT32: Add fs structures (VBR, FSInfo, and FAT)
-- Everywhere: Use unicode and read files as binary std::vector,
-                use custom string funcs accordingly
-- Add opening img files and editing them
+cmd.hpp:
+- Make the instruction parsing functions keep their string and return it
+    as it's needed because InsInfo union uses views
+    or make another system to keep these views active
+    maybe make a union string class for this case and use inside union
+- Finish "openvd" instruction parsing and applying (applyIns())
+- Add allyes, manyes, binary, decimal, 
+- Make CLI direct arg passing like unix (Disker -openvd... -format ...)
+  instead of (Disker - openvd ... - format ...)
+- Make the code at main.cpp actually accept direct args instructions
+- Set clear specific names in comments and documentation to Disker usage methods
+    (CLI direct, commands file, commands one by one, multi-line instructions,
+    instructions or commands)
+
+utils.hpp:
+- Add validatePath function (also tells if path is a direct physical disk path)
+
+generic.hpp:
+- Make PartitionInfo struct work well for both MBR and GPT formats
+
+MBR & GPT:
+- Add partition methods to get PartitionInfo struct
+
+fat32.hpp:
+- Add fs structures (VBR, FSInfo, and FAT)
+
+main.cpp:
+- Add finally writing img files
 
 
 
 
 
 For later:
-- Test everything
+- Test and check EVERYTHING
 - Add Windows & Linux actual disk formatting ability (with a bunch of safety measures)
-
 - Add warning on exit without save
     & on attempting to edit real disks (especially when theyre partitioned and/or have files)
-
 - Add notifying user for standard-breaking but practically functional choices
 - Add way to save commands from commandline into a file for reuse
     (remove unnecessary instructions whose subjects get overwritten after)
-
-- Add code documents, code comments, help string (both direct argument or instruction), usage.txt
-
 - Use some hash maps instead of if statements everywhere
-
 - Add saving variables into Disker for quick and easy reuse
-
+- Add code documents, code comments, help string (both direct argument or instruction), usage.txt
 - Improve disk format summary
+- Make code work on big endian environments too
+    (almost all disk structures (partitions/file systems) are little endian by themselves
+    so youll need struct getters or swapping on RW)
+- Add unicode support
+- Add GUI

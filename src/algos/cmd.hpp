@@ -14,8 +14,7 @@ namespace Cmd {
 // Instruction type
 enum class InsType : uint16_t
 {
-    None, // Just "nothing" instruction
-    Error, // (INTERNAL USAGE ONLY) for signaling an invalid instruction
+    None,
 
     SetYes, // allyes/manyes
     SetBinary, // binary/decimal instructions (for gb/mb/etc. units)
@@ -24,64 +23,42 @@ enum class InsType : uint16_t
     SetFormat, // Set disk format (MBR/GDT) [and optional initial partition count]
     SetPart, // Set partition details
     SetBoot, // Set bootloader binary in (and after) MBR, VBR, or at the UEFI default bootloader path
-
     OpenPart, // Open a partition to set files or sectors
-    SetPath, // Set Path (create/write/remove a directory or file)
 
-    ChangeDir, // Change Directory (inside the fs)
-    List, // List (list files and directories inside the current fs directory)
-    Move, // Move (move a file to a different directory inside the fs)
-    Copy, // Copy (copy a file to a different directory inside the fs)
+    SetFSI, // Set File System Item (file or directory)
+    DelFSI, // Delete File System Item (file or directory)
+    CopyFSI, // Copy File System Item (file or directory)
+    MoveFSI, // Move File System Item (file or directory)
+    RenameFSI, // Rename File System Item (file or directory)
 
+    ListFSIs, // List File System Items (files and directories)
+    ChangeDir, // Change the current directory
+    
     Whats, // Get details about a virtual/physical disk, partition, or currently opened subjects
     Save, // Save the edits to the opened disk
     Exit // Exit Disker (Stop, Exit, Quit)
 };
 
-/*
-enum class SubInsType : uint16_t
-{
-    None,
-
-    Size, // Size in bytes
-    SectSize, // Sector size in bytes
-    Sects, // Sector count
-    Clusts, // Cluster count
-    Parts, // Partition count
-    SPC, // Sectors per Cluster
-
-    FS, // File System
-    Type, // Type
-    GUID, // GUID
-    Align, // Alignment
-    Label // Label
-};
-
-// Sub-Instruction
-struct SubIns
-{
-    SubInsType type = SubInsType::None;
-    std::string op1, op2;
-    
-    SubIns() = default;
-    SubIns(SubInsType type, std::string_view op1, std::string_view op2)
-        : type(type), op1(op1), op2(op2)
-    {}
-};
-*/
-
 union InsInfo
 {
     bool switchValue;
     struct {
+        //std::string_view pathView; // Problematic memeory managment plz fix help me god
         uint64_t size,
                 sectorCount,
                 sectorSize,
                 physicalSectorSize;
+        bool isReal;
     } openDisk;
 
     InsInfo()
         { memset(this, 0, sizeof(InsInfo)); }
+    static InsInfo makeSwitchInfo(bool value)
+    {
+        InsInfo result;
+        result.switchValue = value;
+        return result;
+    }
 };
 
 // Instruction
@@ -96,33 +73,34 @@ struct Ins
     {}
 };
 
-// Uncomment this after switching NONE_INS to ERROR_INS in internal functions (return to caller excluded)
-//const Ins NONE_INS = Ins();
-const Ins ERROR_INS = Ins(InsType::Error, InsInfo());
+const Ins NONE_INS = Ins();
 
-// Returns parsed instruction, and (true) if instruction has more lines (^ or \ at end)
-// Takes line vew, and pointer to instruction to continue parsing if multi-line (nullptr otherwise)
-std::pair<Ins, bool> parseIns(const std::string_view lineView, const Ins continueIns)
+// Returns parsed instruction (None on error), and error state
+// Prints error in instruction on encounter
+std::pair<Ins, Utils::ErrorState> parseIns(const std::string_view insView)
 {
     // Utility functions used only inside this function
+    // Cuts line into segments without spaces
     static auto cutLine = [&]() -> std::vector<std::string_view>
     {
         std::vector<std::string_view> results;
-        for (size_t i = 0; i < lineView.length(); i++)
+        for (size_t i = 0; i < insView.length(); i++)
         {
-            if (!isspace(lineView[i]))
+            if (!isspace(insView[i]))
             {
                 size_t startI = i;
-                for (; i < lineView.length(); i++)
-                    if (isspace(lineView[i])) break;
+                for (; i < insView.length(); i++)
+                    if (isspace(insView[i])) break;
                 size_t afterEndI = i;
-                std::string_view segmentView = lineView.substr(startI, afterEndI - startI);
+                std::string_view segmentView = insView.substr(startI, afterEndI - startI);
                 if (!segmentView.empty()) results.push_back(segmentView);
             }
         }
         return results;
     };
-    static auto compareFull = [](std::string_view anyCaseAnyLenView, std::string_view lowerCaseRequiredView)
+    // Converts the first string (internally) to lower case then compares it to the other string
+    // Returns true if equal
+    static auto compareLow = [](std::string_view anyCaseAnyLenView, std::string_view lowerCaseRequiredView)
                                 -> bool
     {
         return (
@@ -131,137 +109,131 @@ std::pair<Ins, bool> parseIns(const std::string_view lineView, const Ins continu
                         lowerCaseRequiredView.length())
         );
     };
+    // Prints: invalid instruction "$insView" ($reason "$specifiedText")
     static auto printInvalidInsError = [&](std::string_view reason, std::string_view specifiedText) -> void
     {
         if (specifiedText.empty())
-            std::cerr << "invalid instruction (" << reason << ") at \"" << lineView << "\"\n";
+            std::cerr << "invalid instruction \"" << insView << "\" (" << reason << ")\n";
         else
-            std::cerr << "invalid instruction (" << reason << ") \"" << specifiedText
-                                                            << "\" at \"" << lineView << "\"\n";
+            std::cerr << "invalid instruction \"" << insView << "\" (" << reason
+                        << "\"" << specifiedText << "\")\n";
     };
-    // Checks strToSize() result and prints errors accordingly
+    // Checks if size (strToSize() result) is part of SizeSig error signals and prints errors accordingly
+    // Returns true if the size is erroneous
     static auto checkAndPrintErroneousSize = [](uint64_t val, std::string_view seg1, std::string_view seg2,
                                                 std::string_view noNumberErrorText,
-                                                std::string_view tooBigResultErrorText) -> void
+                                                std::string_view tooBigResultErrorText) -> bool
     {
-        using Utils::SizeSig;
-        if (val == (uint64_t)SizeSig::NoNumber) printInvalidInsError(noNumberErrorText, seg1);
-        else if (val == (uint64_t)SizeSig::InvalidNumber) printInvalidInsError("invalid number", seg2);
-        else if (val == (uint64_t)SizeSig::NoUnit) printInvalidInsError("no unit", seg2);
-        else if (val == (uint64_t)SizeSig::InvalidUnit) printInvalidInsError("invalid unit", seg2);
-        else if (val == (uint64_t)SizeSig::TooBigResult) printInvalidInsError(tooBigResultErrorText, seg2);
-    };
-    // Parses sector count arguments if they are for sector count & sets pAlreadyGotSectorCountRelated to true
-    // Returns value and error state
-    static auto ifSectorCountGetIt = [](std::string_view seg1, std::string_view seg2,
-                                        bool* pAlreadyGotSectorCountRelated)
-                                            -> std::pair<uint64_t, Utils::ErrorState>
-    {
-        // Parse e.g. sects 524,288
-        uint64_t val = (uint64_t)Utils::SizeSig::NoNumber;
-        Utils::ErrorState errorState = Utils::ErrorState::NotFound;
-        if (compareFull(seg1, "sects"))
-        {
-            if (*pAlreadyGotSectorCountRelated)
-            {
-                printInvalidInsError("size or sector count is already given", seg1);
-                errorState = Utils::ErrorState::Failure;
-            }
-            else
-            {
-                *pAlreadyGotSectorCountRelated = true;
-                val = Utils::strToSize(seg2, false, globalState.binaryUnits);
-                checkAndPrintErroneousSize(val, seg1, seg2,
-                                            "expected sector count argument",
-                                            "sector count is too big");
-                if (val > (uint64_t)Utils::SizeSig::LEAST_ERROR) errorState = Utils::ErrorState::Failure;
-                else errorState = Utils::ErrorState::Success;
-            }
-        }
-        return {val, errorState};
-    };
+        if (val == (uint64_t)Utils::SizeSig::NoNumber)
+            printInvalidInsError(noNumberErrorText, seg1);
 
-    Ins resultIns = continueIns; // If start of line, continueIns would be INS_NONE so it's ok to use it anyway
-    bool moreLines = false;
-    std::vector<std::string_view> segments = cutLine();
+        else if (val == (uint64_t)Utils::SizeSig::InvalidNumber)
+            printInvalidInsError("invalid number", seg2);
+
+        else if (val == (uint64_t)Utils::SizeSig::NoUnit)
+            printInvalidInsError("no unit", seg2);
+
+        else if (val == (uint64_t)Utils::SizeSig::UnacceptableZero)
+            printInvalidInsError("zero is unacceptable", seg2);
+
+        else if (val == (uint64_t)Utils::SizeSig::TooBigResult)
+            printInvalidInsError(tooBigResultErrorText, seg2);
+
+        else if (val == (uint64_t)Utils::SizeSig::InvalidUnit)
+            printInvalidInsError("invalid unit", seg2);
+
+        else return false;
+        return true;
+    };
     
-    ///////////////////////////////////////////
-    // Skips
-    ///////////////////////////////////////////
+    std::vector<std::string_view> segments = cutLine();
+    Ins resultIns = NONE_INS; // Keep type as None on errors
+    bool error = false; // Set this on error discovery
+    
     // All whitespace no segments
     if (segments.empty())
         resultIns = Ins(InsType::None, InsInfo());
-    // Comment
-    else if (segments[0].size() >= 2 && segments[0][0] == '/' && segments[0][1] == '/')
-        resultIns = Ins(InsType::None, InsInfo());
-
-    ///////////////////////////////////////////
-    // Continue multi-line instruction
-    ///////////////////////////////////////////
-    else if (pContinueIns != nullptr)
-    {
-        return {resultIns, moreLines};
-    }
-
-    ///////////////////////////////////////////
-    // Start of new instruction
-    ///////////////////////////////////////////
     // Help
-    else if (compareFull(segments[0], "help") && segments.size() > 1)
-    {
-        std::cout <<
-            "Help string idfk what to put i will add later\n"
-            ""
-            ""
-            ""
-        << std::endl;
-        resultIns = Ins(InsType::Exit, InsInfo());
-    }
-    // Stop, Exit, QUit
-    else if ((compareFull(segments[0], "stop")
-            || compareFull(segments[0], "exit")
-            || compareFull(segments[0], "quit")
-            ) && segments.size() > 1)
-    {
-        resultIns = Ins(InsType::Exit, InsInfo());
-    }
-    // allyes
-    else if (compareFull(segments[0], "allyes"))
+    else if (compareLow(segments[0], "help"))
     {
         if (segments.size() > 1)
         {
             printInvalidInsError("expected no operands", "");
-            return {ERROR_INS, false};
+            error = true;
         }
-        else resultIns = Ins(InsType::AllYes, InsInfo());
+        else
+        {
+            std::cout <<
+                "Help string idfk what to put i will add later\n"
+                ""
+                ""
+                ""
+            << std::endl;
+            resultIns = Ins(InsType::Exit, InsInfo());
+        }
     }
-    // manyes
-    else if (compareFull(segments[0], "manyes"))
+    
+    // allyes
+    else if (compareLow(segments[0], "allyes"))
     {
         if (segments.size() > 1)
         {
-            printInvalidError("expected no operands", "");
-            return {NONE_INS, false};
+            printInvalidInsError("expected no operands", "");
+            error = true;
         }
-        else resultIns = Ins(InsType::ManYes, InsInfo());
+        else resultIns = Ins(InsType::SetYes, InsInfo::makeSwitchInfo(true));
     }
-    // openvd
-    else if (compareFull(segments[0], "openvd"))
+    // manyes
+    else if (compareLow(segments[0], "manyes"))
     {
-        using Utils::SizeSig;
-        // Maximum line would be
-        //   openvd x.img size 32gib (OR sects N) sectsize 4096B
-        // Which is 6 segments (5 operands)
-        if (segments.size() > 6)
+        if (segments.size() > 1)
         {
-            printInvalidError("expected 5 (or less) operands only", "");
-            return {NONE_INS, false};
+            printInvalidInsError("expected no operands", "");
+            error = true;
         }
-        // Parse e.g. openvd x.img
-        bool gotSizeRelated = false; // Got size or sector count
-        bool gotSectSize = false;
+        else resultIns = Ins(InsType::SetYes, InsInfo::makeSwitchInfo(false));
+    }
+    
+    // binary
+    else if (compareLow(segments[0], "binary"))
+    {
+        if (segments.size() > 1)
+        {
+            printInvalidInsError("expected no operands", "");
+            error = true;
+        }
+        else resultIns = Ins(InsType::SetBinary, InsInfo::makeSwitchInfo(true));
+    }
+    // decimal
+    else if (compareLow(segments[0], "decimal"))
+    {
+        if (segments.size() > 1)
+        {
+            printInvalidInsError("expected no operands", "");
+            error = true;
+        }
+        else resultIns = Ins(InsType::SetBinary, InsInfo::makeSwitchInfo(false));
+    }
+
+    // openvd
+    else if (compareLow(segments[0], "openvd"))
+    {
+        // e.g. openvd x.img size 32gib sectsize 4096B
         for (size_t i = 0; i < segments.size(); i++)
         {
+            // Parse e.g. openvd x.img
+            if (i == 0)
+            {
+
+            }
+            else if (compareFull(segments[i], "size"))
+            else if (compareFull(segments[i], "sectsize"))
+            else error
+
+
+
+
+
             // Parse e.g. size 32gib
             if (compareFull(segments[i], "size"))
             {
@@ -290,26 +262,6 @@ std::pair<Ins, bool> parseIns(const std::string_view lineView, const Ins continu
                 return {ERROR_INS, false};
             else if (sectorCountPair.second == Utils::ErrorState::Success)
                 resultIns.info.openDisk.sectorCount = sectorCountPair.first;
-            /*
-            else if (compareFull(segments[i], "sects"))
-            {
-                if (gotSizeRelated)
-                {
-                    printInvalidError("size or sector count is already given", segments[i]);
-                    return {NONE_INS, false};
-                }
-                else gotSizeRelated = true;
-                if (i +1 == segments.size())
-                {
-                    printInvalidError("expected sector count argument", segments[i]);
-                    return {NONE_INS, false};
-                }
-                uint64_t val = Utils::strToSize(segments[i +1], false, globalState.binaryUnits);
-                bool error = checkPrintErroneousNum(val, segments[i +1], "sector count is too big");
-                if (error) return {NONE_INS, false};
-                else resultIns.subIns.push_back(SubIns(SubInsType::Sects, segments[i +1], ""));
-            }
-            */
             // Parse e.g. sectsize 4096B
             else if (compareFull(segments[i], "sectsize"))
             {
@@ -329,79 +281,168 @@ std::pair<Ins, bool> parseIns(const std::string_view lineView, const Ins continu
                 if (error) return {NONE_INS, false};
                 else resultIns.subIns.push_back(SubIns(SubInsType::SectSize, segments[i +1], ""));
             }
-        }
-        // Ahuuuuuu i have to make it check if user gave 0 as a size/count and which of either they gave
-        // Make lambda functions for each instruction and sub-instruction because this pmo
-        if (gotSizeRelated)
-        {
-
-        }
-        if (gotSectSize)
-        {
-
+            else error
         }
         resultIns.info.openDisk.size = 34893246324;
         resultIns = Ins(InsType::OpenVD, segments[2], "", nullptr);
     }
     
-    ///////////////////////////////////////////
-    // Unsupported instruction
-    ///////////////////////////////////////////
-    if (resultIns.type == InsType::None)
+    // Stop, Exit, QUit
+    else if (compareLow(segments[0], "stop")
+            || compareLow(segments[0], "exit")
+            || compareLow(segments[0], "quit"))
     {
-        std::cerr << "invalid instruction (unsupported) \"" << lineView << "\"\n";
+        if (segments.size() > 1)
+        {
+            printInvalidInsError("expected no operands", "");
+            error = true;
+        }
+        else resultIns = Ins(InsType::Exit, InsInfo());
     }
     
-    ///////////////////////////////////////////
+    // Unsupported instruction
+    if (!error && resultIns.type == InsType::None) printInvalidInsError("unsupported instruction", "");
+
     // Return
-    ///////////////////////////////////////////
-    return {resultIns, moreLines};
+    return {resultIns, (!error)? Utils::ErrorState::Success : Utils::ErrorState::Failure};
 }
 
-// Validates commands file and returns instructions vector (empty if contains 1+ errors)
+// Validates commands file and returns instructions vector (empty if contains errors)
 std::vector<Ins> parseFile(const char* path)
 {
+    // Returns:
+    //   1. Clean string view (no comments or multi-line continue symbol)
+    //   2. Bool (true = instruction continues into the next line (mult-line))
+    static auto cleanLine = [](std::string_view lineView) -> std::pair<std::string_view, bool>
+    {
+        // Remove carriage return from WINDOOOWS FILES because getline doesn't
+        if (!lineView.empty() && lineView.back() == '\r') lineView.remove_suffix(1);
+        // Remove comment
+        for (size_t i = 0; i < lineView.size(); i++)
+        {
+            if (lineView[i] == '#' // Comment
+            && (i == 0 || isspace(lineView[i -1])) ) // Nothing or space before it
+                                                    //   (hashtag may be part of instructions)
+            {
+                lineView.remove_suffix(i +1);
+                break;
+            }
+        }
+        // Check for multi-line continue (and remove it)
+        bool continueNextLine = false;
+        for (size_t i = lineView.size() -1; i != SIZE_MAX; i--)
+        {
+            if (isspace(lineView[i])) continue;
+            else if (lineView[i] != '\\') break; // Normal character (not space nor the symbol)
+            else // Multi-line continue symbol
+            {
+                continueNextLine = true;
+                lineView.remove_suffix(lineView.size() -i);
+                break;
+            }
+        }
+        return {lineView, continueNextLine};
+    };
+
     std::vector<Ins> results;
-    std::stringstream cmdFileStream;
+    size_t errorCount = 0;
+
+    // Read the file
+    std::stringstream fileStream;
     // Scope for temporary variable
     {
-        std::pair<std::string, ErrorState> result = Utils::readFile(path);
-        if (result.second != ErrorState::Success) return results;
-        else cmdFileStream = std::stringstream(result.first);
+        std::pair<std::vector<uint8_t>, Utils::ErrorState> fileResult = Utils::readFile(path);
+        if (fileResult.second != Utils::ErrorState::Success) return results;
+        else fileStream = std::stringstream(std::string(
+            (char*)fileResult.first.data(), fileResult.first.size()
+        ));
     }
-    std::string line;
 
-    Ins ins = NONE_INS;
-    bool moreLines = false;
-    size_t errorCount = 0;
-    while (std::getline(cmdFileStream, line))
+    // Loop over the file
+    std::string insString = "";
+    std::string line = "";
+    bool expectingNextLine = false;
+    while (std::getline(fileStream, line) || expectingNextLine) // Line = "" if nothing left in stream
     {
-        // 10 errors max so user isn't overwhelmed
-        if (errorCount == 10) break;
-        // Remove carriage return from WINDOOOWS FILES because getline doesn't
-        if (!line.empty() && line.back() == '\r') line.pop_back();
-
-        // Parsed result pair
-        std::pair<Ins, bool> parsed = {ins, moreLines};
-        // First line of instruction
-        if (!moreLines) parsed = parseIns(line, NONE_INS);
-        // More lines to same instruction
-        else parsed = parseIns(line, ins);
-        // Open parsed result pair
-        ins = parsed.first;
-        moreLines = parsed.second;
-
+        // If expectingNextLine && line == "": expectingNextLine = false
+        //   then the loop stops even if the last line has a redundant multi-line symbol
+        std::pair<std::string_view, bool> cleanResult = cleanLine(line);
+        line = cleanResult.first;
+        expectingNextLine = cleanResult.second;
+        // Append in all cases + space on both sides padding
+        insString += ' ';
+        insString.append(cleanResult.first);
+        insString += ' ';
+        // Continue adding if expecting a new line
+        if (expectingNextLine) continue;
+        
+        // Parse
+        Ins ins = NONE_INS;
+        Utils::ErrorState errorState = Utils::ErrorState::Failure;
+        std::pair<Ins, Utils::ErrorState> parseResult = parseIns(insString);
+        insString = ""; // Clear for next instruction
+        ins = parseResult.first;
+        errorState = parseResult.second;
         // Error happened
-        if (ins.type == InsType::Error)
+        if (errorState != Utils::ErrorState::Success)
         {
             errorCount++;
             results.clear();
-            // Don't return but keep checking more errors
+            // Don't return, but keep checking more errors
         }
 
-        // No more lines (& no error happened) (& not a None (used for skipping whitespace/comments))
-        if (!moreLines && errorCount == 0 && ins.type != InsType::None) results.push_back(ins);
+        // Add to results if: no error happened & not a None (used for skipping whitespace/comments)
+        if (errorCount == 0 && ins.type != InsType::None) results.push_back(ins);
+        // 10 errors max so user isn't overwhelmed
+        else if (errorCount == 10) break;
     }
+
+    return results;
+}
+
+std::vector<Ins> parseDirectTerminal(size_t argC, const char** argV)
+{
+    // For passing instructions via direct arguments
+    //   e.g. "disker - openvd x.img - format mbr parts 1 - part 1 fs FAT32 size 16gb"
+    
+    std::vector<Ins> results;
+    size_t errorCount = 0;
+    
+    // Loop over argument segments
+    std::string insString = "";
+    for (size_t i = 0; i < argC; i++)
+    {
+        // Instruction separator for direct argument passing
+        if (!strcmp(argV[i], "-"))
+        {
+            // Add argument segments with padding together
+            // This is kinda dumb because parseIns cuts it back again but idc
+            insString = ""; // Clear previous string
+            for (size_t j = 0; j < i; j++)
+            {
+                insString.append(argV[j]);
+                insString += ' ';
+            }
+            // Parse
+            Ins ins = NONE_INS;
+            Utils::ErrorState errorState = Utils::ErrorState::Failure;
+            std::pair<Ins, Utils::ErrorState> parseResult = parseIns(insString);
+            ins = parseResult.first;
+            errorState = parseResult.second;
+            // Error happened
+            if (errorState != Utils::ErrorState::Success)
+            {
+                errorCount++;
+                results.clear();
+                // Don't return, but keep checking more errors
+            }
+            // Add to results if: no error happened & not a None (used for skipping whitespace/comments)
+            if (errorCount == 0 && ins.type != InsType::None) results.push_back(ins);
+        }
+        // 10 errors max so user isn't overwhelmed
+        if (errorCount == 10) break;
+    }
+
     return results;
 }
 
@@ -409,28 +450,7 @@ Ins parseTerminal()
 {
     std::string line;
     std::getline(std::cin, line);
-
-    Ins ins = NONE_INS;
-    bool moreLines = false;
-    do {
-        // Parsed result pair
-        std::pair<Ins, bool> parsed = {NONE_INS, false};
-        // First line of instruction
-        if (!moreLines) parsed = parseIns(line, NONE_INS);
-        // More lines to same instruction
-        else parsed = parseIns(line, ins);
-        // Open parsed result pair
-        ins = parsed.first;
-        moreLines = parsed.second;
-
-        // Error happened
-        if (ins.type == InsType::Error) return NONE_INS;
-
-        // No more lines
-        if (!moreLines) return ins;
-    } while (moreLines);
-
-    return Ins();
+    return parseIns(line).first;
 }
 
 }

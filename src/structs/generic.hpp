@@ -25,6 +25,7 @@ struct Disk
     Format format = Format::MBR;
     uint64_t alignment = 0; // In bytes
 
+    Disk() = default;
     Disk(std::string_view path, bool isRealDisk,
         uint64_t size, uint64_t sectorSize, uint64_t sectorCount,
         uint64_t physicalSectorSize,
