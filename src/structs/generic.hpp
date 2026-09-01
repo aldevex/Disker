@@ -5,11 +5,6 @@
 #include "../algos/utils.hpp"
 namespace Generic {
 
-enum class Format
-{
-    MBR, GPT
-};
-
 struct Disk
 {
     std::string path = "";
@@ -18,31 +13,27 @@ struct Disk
     uint64_t size = 0, sectorSize = 0, sectorCount = 0;
     uint64_t physicalSectorSize = 0;
 
-    uint16_t sectorsPerTrack = 0;
-    uint16_t headCount = 0; // headCount = heads per cylinder too
-    uint32_t cylinderCount = 0;
-
-    Format format = Format::MBR;
     uint64_t alignment = 0; // In bytes
 
     Disk() = default;
     Disk(std::string_view path, bool isRealDisk,
-        uint64_t size, uint64_t sectorSize, uint64_t sectorCount,
-        uint64_t physicalSectorSize,
-        uint16_t sectorsPerTrack, uint16_t headCount, uint32_t cylinderCount,
-        Format format, uint64_t alignment)
+        uint64_t size, uint64_t sectorSize,
+        uint64_t physicalSectorSize, uint64_t alignment)
 
         : path(path), isRealDisk(isRealDisk),
-        size(size), sectorSize(sectorSize), sectorCount(sectorCount),
-        physicalSectorSize(physicalSectorSize),
-        sectorsPerTrack(sectorsPerTrack), headCount(headCount), cylinderCount(cylinderCount),
-        format(format), alignment(alignment)
+        size(size), sectorSize(sectorSize), sectorCount(size/sectorSize),
+        physicalSectorSize(physicalSectorSize), alignment(alignment)
     {}
+};
+
+enum class Scheme
+{
+    MBR, GPT
 };
 
 enum class PartitionType : uint64_t
 {
-    Unavailable, // Type not available here (format-specific or just invalid)
+    Unavailable, // Type not available here (format-specific)
     FAT32, ESP
 };
 

@@ -1,20 +1,12 @@
 
 cmd.hpp:
-- Make the instruction parsing functions keep their string and return it
-    as it's needed because InsInfo union uses views
-    or make another system to keep these views active
-    maybe make a union string class for this case and use inside union
-- Finish "openvd" instruction parsing and applying (applyIns())
-- Add allyes, manyes, binary, decimal, 
 - Make CLI direct arg passing like unix (Disker -openvd... -format ...)
   instead of (Disker - openvd ... - format ...)
+  and make it work on loop end, it seems to leave the last segment if no "-" follows after
 - Make the code at main.cpp actually accept direct args instructions
 - Set clear specific names in comments and documentation to Disker usage methods
     (CLI direct, commands file, commands one by one, multi-line instructions,
     instructions or commands)
-
-utils.hpp:
-- Add validatePath function (also tells if path is a direct physical disk path)
 
 generic.hpp:
 - Make PartitionInfo struct work well for both MBR and GPT formats
@@ -28,24 +20,22 @@ fat32.hpp:
 main.cpp:
 - Add finally writing img files
 
+ssutils.hpp:
+- Add windows getPathInfo and getDiskInfo and disk IO
 
 
 
 
 For later:
-- Test and check EVERYTHING
 - Add Windows & Linux actual disk formatting ability (with a bunch of safety measures)
 - Add warning on exit without save
     & on attempting to edit real disks (especially when theyre partitioned and/or have files)
-- Add notifying user for standard-breaking but practically functional choices
 - Add way to save commands from commandline into a file for reuse
     (remove unnecessary instructions whose subjects get overwritten after)
-- Use some hash maps instead of if statements everywhere
 - Add saving variables into Disker for quick and easy reuse
 - Add code documents, code comments, help string (both direct argument or instruction), usage.txt
-- Improve disk format summary
 - Make code work on big endian environments too
     (almost all disk structures (partitions/file systems) are little endian by themselves
     so youll need struct getters or swapping on RW)
-- Add unicode support
+- Add Linux support
 - Add GUI

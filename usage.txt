@@ -1,10 +1,12 @@
 # Add: hidden sectors, specific reserved sectors,
-#      setting sectors to (real) files directly, dumping sectors into (real) files
+#      setting sectors to (real) files directly, dumping sectors into (real) files,
+#      explicit alignment
 
 # Methods to use Disker:
-# 1. "disker do <commands file>"
-# 2. "disker - <command 1> - <command 2> - <command 3>..."
+# 1. "disker <commands file>"
+# 2. "disker -<command 1> -<command 2> -<command 3>..."
 # 3. "disker" then write input commands one by one
+# 4. GUI
 
 # Comments are ignored in command files
 # Disker should ignore upper/lower case in commands

@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdlib>
+#include <cstring>
 #include <cstdio>
 #include <cstdint>
 #include <iostream>
@@ -9,20 +10,21 @@
 #include <vector>
 namespace Utils {
 
-std::string lowerStr(std::string_view view)
+inline std::string lowerStr(std::string_view view)
 {
     std::string result;
     for (char c : view) result += tolower(c);
+    return result;
 }
 
-// strToByteCount reserved return value signals
+// strToByteCount reserved return value error signals
 enum class SizeSig : uint64_t
 {
-    NoNumber = UINT64_MAX, // No number at start of string
+    NoNumber = UINT64_MAX, // No number (empty string, or commas and other separators without a number)
     InvalidNumber = (UINT64_MAX -1), // Failed to convert the raw number
     NoUnit = (UINT64_MAX -2), // No unit after number when expected
     UnacceptableZero = (UINT64_MAX -3), // The number is zero when zero is unacceptable
-    TooBigResult = (UINT64_MAX -4), // The result is above SIZE_MAX and/or is inside this enum
+    TooBigResult = (UINT64_MAX -4), // The result is above UINT64_MAX and/or is inside this enum
     InvalidUnit = (UINT64_MAX -5), // Invalid unit after number (e.g. "32volts")
 
     LEAST_ERROR = InvalidUnit // Smallest enum value
@@ -30,11 +32,11 @@ enum class SizeSig : uint64_t
 
 constexpr uint64_t CONVSIZE_MAX = (uint64_t)SizeSig::LEAST_ERROR -1;
 
-// Converts strings to unsigned integer with multiplying unit, e.g. "400", "32gib", "6mb", "40b"
+// Converts strings to unsigned integer with multiplying unit, e.g. "400", "32gIB", "6Mb", "40B"
 // May return a specific enum value in the uint64_t on failure (check with SizeSig enum)
 // Does NOT print error messages on failure
 // Easy way to remember parameter order: "0 then 2 (binary) then unit"
-uint64_t strToSize(std::string_view view, bool zeroIsUnacceptable, bool alwaysBinaryUnits, bool unitExpected)
+inline uint64_t strToSize(std::string_view view, bool zeroIsUnacceptable, bool alwaysBinaryUnits, bool unitExpected)
 {
     std::string copy; // String copy to ensure null terminator + remove commas
     // Ignore: commas, single quotes, and underscore off the number
@@ -42,16 +44,16 @@ uint64_t strToSize(std::string_view view, bool zeroIsUnacceptable, bool alwaysBi
         if (c != ',' && c != '\'' && c != '_') copy += c;
 
     // No number
-    if (copy.empty() || (copy[0] < '0' && copy[0] > '9')) return (uint64_t)SizeSig::NoNumber;
+    if (copy.empty()) return (uint64_t)SizeSig::NoNumber;
 
     char* endPtr = nullptr;
     uint64_t rawNum = strtoull(copy.c_str(), &endPtr, 0);
     // Total failure
     if (endPtr == nullptr) return (uint64_t)SizeSig::InvalidNumber;
     // Unexpected unit (or random bs text stuck after raw number)
-    else if (!unitExpected && endPtr != '\0') return (uint64_t)SizeSig::InvalidNumber;
+    else if (!unitExpected && endPtr[0] != '\0') return (uint64_t)SizeSig::InvalidNumber;
     // No unit
-    else if (unitExpected && endPtr == '\0') return (uint64_t)SizeSig::NoUnit;
+    else if (unitExpected && endPtr[0] == '\0') return (uint64_t)SizeSig::NoUnit;
     // Unacceptable zero
     else if (rawNum == 0) return (uint64_t)SizeSig::UnacceptableZero;
 
@@ -66,6 +68,10 @@ uint64_t strToSize(std::string_view view, bool zeroIsUnacceptable, bool alwaysBi
         if ( (shiftNotMultiply && rawNum > CONVSIZE_MAX / (1ULL << multiplier))
           || (!shiftNotMultiply && rawNum > CONVSIZE_MAX / (multiplier)) )
             return (uint64_t)SizeSig::TooBigResult;
+        else if (shiftNotMultiply)
+            return rawNum << multiplier;
+        else
+            return rawNum * multiplier;
     };
 
     // No unit, or bytes unit
@@ -103,7 +109,7 @@ enum class ErrorState : uint8_t
 
 // Returns read buffer and error state
 // It prints an error message on failure too
-std::pair<std::vector<uint8_t>, ErrorState> readFile(const char* path)
+inline std::pair<std::vector<uint8_t>, ErrorState> readFile(const char* path)
 {
     FILE* file = fopen(path, "rb");
     if (file == nullptr)
@@ -156,7 +162,7 @@ std::pair<std::vector<uint8_t>, ErrorState> readFile(const char* path)
     return {buffer, ErrorState::Success};
 }
 
-uint32_t crc32(const void* data, size_t length)
+inline uint32_t crc32(const void* data, size_t length)
 {
     const uint8_t* buffer = (const uint8_t*)data;
     uint32_t crc = 0xFFFFFFFF;
