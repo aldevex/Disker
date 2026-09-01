@@ -1,41 +1,32 @@
 
-cmd.hpp:
+- Use macros or lambdas for repetitive code @parseIns @main_tui.hpp
+- Accelerate writing empty data in image files with system apis (ssutils)
 - Make CLI direct arg passing like unix (Disker -openvd... -format ...)
   instead of (Disker - openvd ... - format ...)
   and make it work on loop end, it seems to leave the last segment if no "-" follows after
-- Make the code at main.cpp actually accept direct args instructions
 - Set clear specific names in comments and documentation to Disker usage methods
-    (CLI direct, commands file, commands one by one, multi-line instructions,
-    instructions or commands)
-
-generic.hpp:
+    (direct arguments, file, terminal, multi-line instructions/line-continue character,
+    instructions not commands)
+- Add questions and warnings on critical instructions / changing previous data
 - Make PartitionInfo struct work well for both MBR and GPT formats
-
-MBR & GPT:
-- Add partition methods to get PartitionInfo struct
-
-fat32.hpp:
+- Add MBR and GPT partition methods to get PartitionInfo struct
 - Add fs structures (VBR, FSInfo, and FAT)
-
-main.cpp:
-- Add finally writing img files
-
-ssutils.hpp:
-- Add windows getPathInfo and getDiskInfo and disk IO
-
+- Add reading and writing MBR partitions to img files
 
 
 
 For later:
-- Add Windows & Linux actual disk formatting ability (with a bunch of safety measures)
+- Add windows getPathInfo and getDiskInfo, and disk IO (with a bunch of safety measures),
+    and use getPathInfo to validate that paths are files before reading
 - Add warning on exit without save
     & on attempting to edit real disks (especially when theyre partitioned and/or have files)
 - Add way to save commands from commandline into a file for reuse
     (remove unnecessary instructions whose subjects get overwritten after)
 - Add saving variables into Disker for quick and easy reuse
-- Add code documents, code comments, help string (both direct argument or instruction), usage.txt
 - Make code work on big endian environments too
     (almost all disk structures (partitions/file systems) are little endian by themselves
     so youll need struct getters or swapping on RW)
 - Add Linux support
 - Add GUI
+- Add code documents, code comments, help string (both direct argument or instruction), usage.txt
+- Make a logo for the program

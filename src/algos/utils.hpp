@@ -8,7 +8,18 @@
 #include <string_view>
 #include <utility>
 #include <vector>
+#include <span>
 namespace Utils {
+
+inline void printHelp()
+{
+    std::cout <<
+        "Help string idfk what to put i will add later\n"
+        ""
+        ""
+        ""
+    << std::endl;
+}
 
 inline std::string lowerStr(std::string_view view)
 {
@@ -16,6 +27,17 @@ inline std::string lowerStr(std::string_view view)
     for (char c : view) result += tolower(c);
     return result;
 }
+
+// Converts the first string (internally) to lower case then compares it to the second string
+// Returns true if equal
+inline bool compareLow(std::string_view anyCaseAnyLenView, std::string_view lowerCaseRequiredView)
+{
+    return (
+        (anyCaseAnyLenView.length() == lowerCaseRequiredView.length())
+        && !strncmp(Utils::lowerStr(anyCaseAnyLenView).c_str(), lowerCaseRequiredView.data(),
+                    lowerCaseRequiredView.length())
+    );
+};
 
 // strToByteCount reserved return value error signals
 enum class SizeSig : uint64_t
@@ -55,10 +77,10 @@ inline uint64_t strToSize(std::string_view view, bool zeroIsUnacceptable, bool a
     // No unit
     else if (unitExpected && endPtr[0] == '\0') return (uint64_t)SizeSig::NoUnit;
     // Unacceptable zero
-    else if (rawNum == 0) return (uint64_t)SizeSig::UnacceptableZero;
+    else if (zeroIsUnacceptable && rawNum == 0) return (uint64_t)SizeSig::UnacceptableZero;
 
     // Convert according to unit
-    static auto multiply = [&](uint64_t multiplier, bool shiftNotMultiply) -> uint64_t
+    auto multiply = [&](uint64_t multiplier, bool shiftNotMultiply) -> uint64_t
     {
         // Check if 1. raw number itself is inside enum
         //   or 2. conversion will overflow uint64_t and/or enum limit (both checks work with only CONVSIZE_MAX)
@@ -75,26 +97,26 @@ inline uint64_t strToSize(std::string_view view, bool zeroIsUnacceptable, bool a
     };
 
     // No unit, or bytes unit
-    if (!unitExpected || strcmp(lowerStr(endPtr).c_str(), "b")) return multiply(0, true);
+    if (!unitExpected || compareLow(endPtr, "b")) return multiply(0, true);
     // Powers of 2 units
-    else if (strcmp(lowerStr(endPtr).c_str(), "kib")) return multiply(10, true);
-    else if (strcmp(lowerStr(endPtr).c_str(), "mib")) return multiply(20, true);
-    else if (strcmp(lowerStr(endPtr).c_str(), "gib")) return multiply(30, true);
-    else if (strcmp(lowerStr(endPtr).c_str(), "tib")) return multiply(40, true);
-    else if (strcmp(lowerStr(endPtr).c_str(), "pib")) return multiply(50, true);
-    else if (strcmp(lowerStr(endPtr).c_str(), "eib")) return multiply(60, true);
+    else if (compareLow(endPtr, "kib")) return multiply(10, true);
+    else if (compareLow(endPtr, "mib")) return multiply(20, true);
+    else if (compareLow(endPtr, "gib")) return multiply(30, true);
+    else if (compareLow(endPtr, "tib")) return multiply(40, true);
+    else if (compareLow(endPtr, "pib")) return multiply(50, true);
+    else if (compareLow(endPtr, "eib")) return multiply(60, true);
     // Powers of 10 units
-    else if (strcmp(lowerStr(endPtr).c_str(), "kb"))
+    else if (compareLow(endPtr, "kb"))
         return (alwaysBinaryUnits)? multiply(10, true) : multiply(1'000, false);
-    else if (strcmp(lowerStr(endPtr).c_str(), "mb"))
+    else if (compareLow(endPtr, "mb"))
         return (alwaysBinaryUnits)? multiply(20, true) : multiply(1'000'000, false);
-    else if (strcmp(lowerStr(endPtr).c_str(), "gb"))
+    else if (compareLow(endPtr, "gb"))
         return (alwaysBinaryUnits)? multiply(30, true) : multiply(1'000'000'000, false);
-    else if (strcmp(lowerStr(endPtr).c_str(), "tb"))
+    else if (compareLow(endPtr, "tb"))
         return (alwaysBinaryUnits)? multiply(40, true) : multiply(1'000'000'000'000, false);
-    else if (strcmp(lowerStr(endPtr).c_str(), "pb"))
+    else if (compareLow(endPtr, "pb"))
         return (alwaysBinaryUnits)? multiply(50, true) : multiply(1'000'000'000'000'000, false);
-    else if (strcmp(lowerStr(endPtr).c_str(), "eb"))
+    else if (compareLow(endPtr, "eb"))
         return (alwaysBinaryUnits)? multiply(60, true) : multiply(1'000'000'000'000'000'000ULL, false);
     
     return (uint64_t)SizeSig::InvalidUnit;
@@ -158,8 +180,42 @@ inline std::pair<std::vector<uint8_t>, ErrorState> readFile(const char* path)
         }
     }
 
-    fclose(file);
+    if (fclose(file) != 0)
+    {
+        std::cerr << "failed to close file after reading \"" << path << "\"\n";
+        return {{}, ErrorState::Failure};
+    }
     return {buffer, ErrorState::Success};
+}
+
+// Returns error state
+// It prints an error message on failure too
+inline ErrorState writeFile(const char* path, const uint8_t* pBuffer, size_t bufferSize)
+{
+    FILE* file = fopen(path, "wb");
+    if (file == nullptr)
+    {
+        std::cerr << "failed to open file for writing \"" << path << "\"\n";
+        return ErrorState::Failure;
+    }
+
+    if (bufferSize != 0)
+    {
+        size_t writtenSize = fwrite(pBuffer, 1, bufferSize, file);
+        if (writtenSize != bufferSize)
+        {
+            std::cerr << "failed to write file \"" << path << "\"\n";
+            fclose(file);
+            return ErrorState::Failure;
+        }
+    }
+
+    if (fclose(file) != 0)
+    {
+        std::cerr << "failed to close file after writing \"" << path << "\"\n";
+        return ErrorState::Failure;
+    }
+    return ErrorState::Success;
 }
 
 inline uint32_t crc32(const void* data, size_t length)

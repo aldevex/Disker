@@ -1,0 +1,24 @@
+Codebase explanation (src/):
+
+Entry files (entry/):
+"entry/entry_utf8.cpp": Entry on linux and other UTF-8 native systems.
+"entry/entry_win.cpp": Entry on windows.
+"entry_gui.cpp": Entry on cross-platform GUI library.
+
+Core files (core/):
+"main_tui.hpp": TUI core code. Included by "entry/entry_win.cpp" or "entry/entry_utf8.cpp".
+"main_gui.hpp": GUI core code. Included by "entry_gui.cpp".
+"state.hpp": Program instructions state. Included by "main_tui.hpp" or "main_gui.hpp".
+
+Generic code files (algos/):
+"utils.hpp": Generic utility functions.
+"inss.hpp": Code for Disker instructions applied by "state.hpp".
+"ssutils.hpp": Declarations for system-specific utility functions.
+"ssutils_linux.cpp": Linux implementation of "ssutils.hpp".
+"ssutils_win.cpp": Windows implementation of "ssutils.hpp".
+
+Disk scheme and partition structures (structs/):
+"generic.hpp": Generic code unbound to specific partition schemes or file systems.
+"mbr.hpp": MBR scheme code.
+"gpt.hpp": GPT scheme code.
+"fat32.hpp": FAT32 file system code.
