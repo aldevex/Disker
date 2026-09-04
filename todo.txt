@@ -1,23 +1,34 @@
 
-- Use macros or lambdas for repetitive code @parseIns @main_tui.hpp
-- Accelerate writing empty data in image files with system apis (ssutils)
+- Merge the three "validatePrintExtract" lambdas into validatePrintExtractOperands() in parseIns()
+    and make make it work in all situations (max 2 operands) + good error printing
+    errors to use: "expected no operands" "expected ___" "repeated ___" "___ is too big" "invalid ___"
+
+- Accelerate writing big image files with winapi (write func that takes total file size
+    and vector of buffers and file offsets to write)
+- Before writing image use function to read image if it exists
+    that returns: scheme, mbr, gpt header and array also error status
+    and does validation to ensure path isn't a real disk
+    and print stats for the opened disk image after openvd instruction
+- Remove old terms in comments and documentation
+    (direct arguments, file, terminal, multi-line instructions/line-continue character,
+    instructions not commands, main/sub-instruction and pre-operand = (operand)-declarator)
+- Add "whats sys" instruction to get disk paths and each bound partition
+- Add ability to use "whats" on unopened disks (virtual and real)
+- Check invalid disk/sector sizes
 - Make CLI direct arg passing like unix (Disker -openvd... -format ...)
   instead of (Disker - openvd ... - format ...)
   and make it work on loop end, it seems to leave the last segment if no "-" follows after
-- Set clear specific names in comments and documentation to Disker usage methods
-    (direct arguments, file, terminal, multi-line instructions/line-continue character,
-    instructions not commands)
 - Add questions and warnings on critical instructions / changing previous data
 - Make PartitionInfo struct work well for both MBR and GPT formats
 - Add MBR and GPT partition methods to get PartitionInfo struct
 - Add fs structures (VBR, FSInfo, and FAT)
 - Add reading and writing MBR partitions to img files
 
-
-
 For later:
-- Add windows getPathInfo and getDiskInfo, and disk IO (with a bunch of safety measures),
-    and use getPathInfo to validate that paths are files before reading
+- Add getPathType function
+- Add function to convert volume path/name/letter to disk path
+- Add functions to get all volumes and partitions from disk path
+- Add windows getDiskInfo, and disk IO (with a bunch of safety measures)
 - Add warning on exit without save
     & on attempting to edit real disks (especially when theyre partitioned and/or have files)
 - Add way to save commands from commandline into a file for reuse
@@ -30,3 +41,4 @@ For later:
 - Add GUI
 - Add code documents, code comments, help string (both direct argument or instruction), usage.txt
 - Make a logo for the program
+- Add version printing
