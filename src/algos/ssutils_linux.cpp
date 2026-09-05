@@ -4,7 +4,7 @@
 #include "../algos/utils.hpp"
 #include "../algos/ssutils.hpp"
 
-namespace SSUtils
+namespace Utils
 {
     /*
     // Returns:
@@ -30,4 +30,4 @@ namespace SSUtils
         }
     }
     */
-} // namespace SSUtils
+} // namespace Utils

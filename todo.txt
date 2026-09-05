@@ -1,23 +1,18 @@
 
-- Merge the three "validatePrintExtract" lambdas into validatePrintExtractOperands() in parseIns()
-    and make make it work in all situations (max 2 operands) + good error printing
-    errors to use: "expected no operands" "expected ___" "repeated ___" "___ is too big" "invalid ___"
-
+- Make direct arguments passing (parseDirectArgs)
+    like unix (Disker -openvd... -format ...) instead of (Disker - openvd ... - format ...)
+    and make it work on loop end, it seems to leave the last segment if no "-" follows after
+    and fix it in general it's not working
 - Accelerate writing big image files with winapi (write func that takes total file size
     and vector of buffers and file offsets to write)
 - Before writing image use function to read image if it exists
     that returns: scheme, mbr, gpt header and array also error status
     and does validation to ensure path isn't a real disk
     and print stats for the opened disk image after openvd instruction
-- Remove old terms in comments and documentation
-    (direct arguments, file, terminal, multi-line instructions/line-continue character,
-    instructions not commands, main/sub-instruction and pre-operand = (operand)-declarator)
+- Add path validation to validatePrintExtractOperands() in parseIns() and disk image and generic file writing
 - Add "whats sys" instruction to get disk paths and each bound partition
 - Add ability to use "whats" on unopened disks (virtual and real)
 - Check invalid disk/sector sizes
-- Make CLI direct arg passing like unix (Disker -openvd... -format ...)
-  instead of (Disker - openvd ... - format ...)
-  and make it work on loop end, it seems to leave the last segment if no "-" follows after
 - Add questions and warnings on critical instructions / changing previous data
 - Make PartitionInfo struct work well for both MBR and GPT formats
 - Add MBR and GPT partition methods to get PartitionInfo struct

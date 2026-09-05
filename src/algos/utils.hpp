@@ -71,7 +71,7 @@ inline uint64_t strToSize(std::string_view view, bool zeroIsUnacceptable, bool a
     char* endPtr = nullptr;
     uint64_t rawNum = strtoull(copy.c_str(), &endPtr, 0);
     // Total failure
-    if (endPtr == nullptr) return (uint64_t)SizeSig::InvalidNumber;
+    if (endPtr == copy.c_str()) return (uint64_t)SizeSig::InvalidNumber;
     // Unexpected unit (or random bs text stuck after raw number)
     else if (!unitExpected && endPtr[0] != '\0') return (uint64_t)SizeSig::InvalidNumber;
     // No unit

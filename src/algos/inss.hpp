@@ -10,6 +10,7 @@
 #include <string_view>
 #include <iostream>
 #include "../algos/utils.hpp"
+#include "../structs/generic.hpp"
 // Instructions
 namespace Inss {
 
@@ -23,7 +24,7 @@ enum class InsType : uint16_t
     SetBinary, // binary/decimal instructions (for gb/mb/etc. units)
 
     OpenDisk, // openvd/openphd
-    SetFormat, // Set disk format (MBR/GDT) [and optional initial partition count]
+    SetScheme, // Set disk scheme (MBR/GDT) and partition count
     SetPart, // Set partition details
     SetBoot, // Set bootloader binary in (and after) MBR, VBR, or at the UEFI default bootloader path
     OpenPart, // Open a partition to set files or sectors
@@ -48,7 +49,9 @@ class Ins;
 union InsInfo
 {
     bool switchValue;
-    struct _OpenDiskStruct {
+
+    struct _OpenDiskStruct
+    {
         uint64_t size,
                 sectorSize,
                 physicalSectorSize;
@@ -56,6 +59,12 @@ union InsInfo
         void setPath(Ins* pParentIns, std::string_view pathView);
         std::string_view getPath(const Ins* pParentIns) const;
     } openDisk;
+
+    struct
+    {
+        Generic::Scheme scheme;
+        uint64_t partitionCount;
+    } setScheme;
 
     InsInfo()
         { memset(this, 0, sizeof(InsInfo)); }

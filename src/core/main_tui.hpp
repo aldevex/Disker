@@ -25,17 +25,20 @@ int TUIMain(int argC, char** argV)
     }
     else
     {
-        // Help
-        if (argC == 2 && Utils::compareLow(argV[1], "help"))
+        if (argC == 2)
         {
-            Utils::printHelp();
-        }
-        // Instructions via file
-        else if (argC == 3 && Utils::compareLow(argV[1], "do"))
-        {
-            std::vector<Inss::Ins> instructions = parseFile(argV[2], state.alwaysBinaryUnits);
-            for (const Inss::Ins& ins : instructions)
-                applyIns(ins);
+            // Help
+            if (Utils::compareLow(argV[1], "help"))
+            {
+                Utils::printHelp();
+            }
+            // Instructions via file
+            else
+            {
+                std::vector<Inss::Ins> instructions = parseFile(argV[2], state.alwaysBinaryUnits);
+                for (const Inss::Ins& ins : instructions)
+                    applyIns(ins);
+            }
         }
         // Instructions via direct arguments
         else if (!strncmp(argV[1], "-", 1))
@@ -47,8 +50,8 @@ int TUIMain(int argC, char** argV)
         // Invalid args
         else
         {
-            std::cerr << "invalid arguments. expected \"do <FILE NAME>\""
-                        " or \"-<instruction1> [operands] -[instruction2] [operands]...\"\n"
+            std::cerr << "invalid arguments. expected \"<FILE NAME>\""
+                        " or \"-<instruction1> <arguments> -[instruction2] [arguments]...\"\n"
                         "use \"help\" for help";
             exit(EXIT_FAILURE);
         }
@@ -61,36 +64,29 @@ int TUIMain(int argC, char** argV)
 
 // Returns parsed instruction (None on error), and error state
 // Prints error in instruction on encounter
-std::pair<Inss::Ins, Utils::ErrorState> parseIns(const std::string_view insView, bool alwaysBinaryUnits)
+std::pair<Inss::Ins, Utils::ErrorState> parseIns(const std::string_view insView, bool alwaysBinaryUnits,
+                                                bool callerIsParsingASingleLine)
 {
     using namespace Inss;
-    // Utility functions used only inside this function
-    // Cuts line into segments without spaces
-    auto cutLine = [&]() -> std::vector<std::string_view>
-    {
-        std::vector<std::string_view> results;
-        for (size_t i = 0; i < insView.length(); i++)
-        {
-            if (!isspace((unsigned char)insView[i]))
-            {
-                size_t startI = i;
-                for (; i < insView.length(); i++)
-                    if (isspace((unsigned char)insView[i])) break;
-                size_t afterEndI = i;
-                std::string_view segmentView = insView.substr(startI, afterEndI - startI);
-                if (!segmentView.empty()) results.push_back(segmentView);
-            }
-        }
-        return results;
-    };
     // Prints: invalid instruction "$insView" ($reason "$specifiedText")
     auto printInvalidInsError = [&](std::string_view reason, std::string_view specifiedText) -> void
     {
-        if (specifiedText.empty())
-            std::cerr << "invalid instruction \"" << insView << "\" (" << reason << ")\n";
+        if (!callerIsParsingASingleLine)
+        {
+            if (specifiedText.empty())
+                std::cerr << "invalid instruction \"" << insView << "\" (" << reason << ")\n";
+            else
+                std::cerr << "invalid instruction \"" << insView << "\" (" << reason
+                            << " \"" << specifiedText << "\")\n";
+        }
         else
-            std::cerr << "invalid instruction \"" << insView << "\" (" << reason
-                        << " \"" << specifiedText << "\")\n";
+        {
+            if (specifiedText.empty())
+                std::cerr << "invalid instruction (" << reason << ")\n";
+            else
+                std::cerr << "invalid instruction (" << reason
+                            << " \"" << specifiedText << "\")\n";
+        }
     };
     // Checks if size (strToSize() result) is part of SizeSig error signals and prints errors accordingly
     // Returns true if the size is erroneous
@@ -119,6 +115,274 @@ std::pair<Inss::Ins, Utils::ErrorState> parseIns(const std::string_view insView,
         else return false;
         return true;
     };
+        
+    // AV = Argument Value
+    enum class AVType : uint8_t
+    {
+        Textual, Numeric
+    };
+    enum class TextualAVType : uint8_t
+    {
+        VectorSpecified, FileOrNonePath, // File path or inexistent path
+        FilePath, DirPath, DiskPath
+    };
+    struct ExtractedAV
+    {
+        std::string_view textualVal;
+        uint64_t numericVal;
+    };
+    // Didn't use union here for simplicity
+    struct AVInfo
+    {
+        std::string nameLowercase = "";
+        AVType type = AVType::Textual;
+
+        struct {
+            TextualAVType type = TextualAVType::VectorSpecified;
+            std::vector<std::string> expectedVals = {};
+        } textual;
+        struct {
+            bool zeroIsUnacceptable = false, unitExpected = false;
+        } numeric;
+        
+        std::string defaultVal = ""; // Also used for numeric values
+        ExtractedAV* pExtracted = nullptr;
+        
+        AVInfo() = default;
+        static AVInfo makeTextual(std::string_view nameLowercase, TextualAVType type,
+                                            const std::vector<std::string>& expectedVals,
+                                            std::string_view defaultVal, ExtractedAV* pExtracted)
+        {
+            AVInfo result;
+            result.nameLowercase = nameLowercase;
+            result.type = AVType::Textual;
+
+            result.textual.type = type;
+            result.textual.expectedVals = expectedVals;
+
+            result.defaultVal = defaultVal;
+            result.pExtracted = pExtracted;
+            return result;
+        }
+        static AVInfo makeNumeric(std::string_view nameLowercase,
+                                            bool zeroIsUnacceptable, bool unitExpected,
+                                            std::string_view defaultValAsStr, ExtractedAV* pExtracted)
+        {
+            AVInfo result;
+            result.nameLowercase = nameLowercase;
+            result.type = AVType::Numeric;
+
+            result.numeric.zeroIsUnacceptable = zeroIsUnacceptable;
+            result.numeric.unitExpected = unitExpected;
+            
+            result.defaultVal = defaultValAsStr;
+            result.pExtracted = pExtracted;
+            return result;
+        }
+    };
+    // AD = Argument Declarator (argument name or instruction name itself, before values)
+    struct ADInfo
+    {
+        std::string nameLowercase = "";
+        bool isRequired = false;
+        size_t valCount = 0;
+        AVInfo valInfos[2] = {};
+        
+        ADInfo() = default;
+        ADInfo(std::string_view nameLowercase, bool isRequired, const std::vector<AVInfo>& valInfos)
+        {
+            if (valInfos.size() > 2)
+            {
+                std::cerr << "valInfos.size() > 2 given to DeclaratorInfo constructor in parseIns()"
+                    << " (vector size = " << valInfos.size() << ")\n";
+                exit(EXIT_FAILURE);
+            }
+            this->nameLowercase = nameLowercase;
+            this->isRequired = isRequired;
+            for (; valCount < valInfos.size(); valCount++)
+                this->valInfos[valCount] = valInfos[valCount];
+        }
+    };
+    // Validates, prints errors, and extracts all argument declarators and values
+    // Instruction name (first argument declarator) must be compared to the desired string before call
+    //   and must be the first value in declaratorInfos
+    auto validatePrintExtractVals = [&](const std::vector<std::string_view>& segVecRef,
+                                        const std::vector<ADInfo>& declaratorInfos)
+                                                -> Utils::ErrorState
+    {
+        // Check empty declarator infos
+        if (declaratorInfos.empty())
+        {
+            std::cerr << "empty declarator vector given to validatePrintExtractVals() in parseIns()\n";
+            exit(EXIT_FAILURE);
+        }
+
+        // To catch duplicate declarators
+        std::vector<bool> foundDecls(declaratorInfos.size(), false);
+        for (size_t segI = 0; segI < segVecRef.size(); )
+        {
+            size_t currentDeclInfoI = SIZE_MAX;
+            // Get current declarator index
+            if (segI == 0) currentDeclInfoI = 0;
+            else for (size_t declInfoI = 1; declInfoI < declaratorInfos.size(); declInfoI++)
+            {
+                if (Utils::compareLow(segVecRef[segI], declaratorInfos[declInfoI].nameLowercase))
+                {
+                    currentDeclInfoI = declInfoI;
+                    break;
+                }
+            }
+            // Check if segment didn't match any declarator
+            if (currentDeclInfoI == SIZE_MAX)
+            {
+                printInvalidInsError("unexpected argument", segVecRef[segI]);
+                return Utils::ErrorState::Failure;
+            }
+            // Check if the declarator is repeated
+            const ADInfo& currentDeclInfo = declaratorInfos[currentDeclInfoI];
+            if (foundDecls[currentDeclInfoI])
+            {
+                printInvalidInsError("repeated " +currentDeclInfo.nameLowercase +" argument", segVecRef[segI]);
+                return Utils::ErrorState::Failure;
+            }
+            // Set current declarator index to found
+            else foundDecls[currentDeclInfoI] = true;
+            // Check if there are enough segments for the current declarator's operands
+            if (segI +currentDeclInfo.valCount >= segVecRef.size())
+            {
+                // Declarator not printed if it's just the instruction name
+                if (currentDeclInfo.valCount == 1)
+                    printInvalidInsError("expected " +currentDeclInfo.valInfos[0].nameLowercase +" value",
+                                            (currentDeclInfoI == 0)? "" : segVecRef[segI]);
+                else
+                    printInvalidInsError("expected " +currentDeclInfo.valInfos[0].nameLowercase
+                                        +" and " +currentDeclInfo.valInfos[1].nameLowercase +" values",
+                                            (currentDeclInfoI == 0)? "" : segVecRef[segI]);
+                return Utils::ErrorState::Failure;
+            }
+            // Extract and validate current declarator values
+            for (size_t valI = 0; valI < currentDeclInfo.valCount; valI++)
+            {
+                const AVInfo& valInfo = currentDeclInfo.valInfos[valI];
+                const std::string_view valSeg = segVecRef[segI +1 +valI];
+                // Textual value
+                if (valInfo.type == AVType::Textual)
+                {
+                    bool valid = false;
+                    if (valInfo.textual.type == TextualAVType::VectorSpecified)
+                    {
+                        // Any value allowed
+                        if (valInfo.textual.expectedVals.empty()) valid = true;
+                        // Specific values allowed
+                        else for (const std::string& expectedVal : valInfo.textual.expectedVals)
+                            if (Utils::compareLow(valSeg, expectedVal))
+                            {
+                                valid = true;
+                                break;
+                            }
+                    }
+                    // Path types
+                    else
+                    {
+                        // ********************************************
+                        // ********************************************
+                        // Code to validate path types should be here
+                        // ********************************************
+                        // ********************************************
+                        valid = true; 
+                    }
+                    // Print error or set extracted value
+                    if (!valid)
+                    {
+                        printInvalidInsError("invalid " + valInfo.nameLowercase, valSeg);
+                        return Utils::ErrorState::Failure;
+                    }
+                    else if (valInfo.pExtracted == nullptr)
+                    {
+                        std::cerr << "(textual) valInfo.pExtracted == nullptr given to"
+                                    " validatePrintExtractVals() in parseIns()\n";
+                        exit(EXIT_FAILURE);
+                    }
+                    else valInfo.pExtracted->textualVal = valSeg;
+                }
+                // Numeic value
+                else if (valInfo.type == AVType::Numeric)
+                {
+                    uint64_t val = Utils::strToSize(valSeg, valInfo.numeric.zeroIsUnacceptable,
+                                                    alwaysBinaryUnits, valInfo.numeric.unitExpected);
+                    if (checkAndPrintErroneousSize(val, segVecRef[segI], valSeg,
+                                                    valInfo.nameLowercase +" is too big"))
+                        return Utils::ErrorState::Failure;
+                    else if (valInfo.pExtracted == nullptr)
+                    {
+                        std::cerr << "(numeric) valInfo.pExtracted == nullptr given to"
+                                    " validatePrintExtractVals() in parseIns()\n";
+                        exit(EXIT_FAILURE);
+                    }
+                    else valInfo.pExtracted->numericVal = val;
+                }
+            }
+            // Progress main loop
+            segI += (1 +currentDeclInfo.valCount);
+        }
+
+        // Check missing required declarators and set default values for missing optional ones
+        for (size_t declInfoI = 1; declInfoI < declaratorInfos.size(); declInfoI++)
+        {
+            if (foundDecls[declInfoI]) continue;
+            // Error for missing required declarators
+            if (declaratorInfos[declInfoI].isRequired)
+            {
+                printInvalidInsError("expected " + declaratorInfos[declInfoI].nameLowercase + " argument", "");
+                return Utils::ErrorState::Failure;
+            }
+            // Set default values for missing optional declarators
+            for (size_t valI = 0; valI < declaratorInfos[declInfoI].valCount; valI++)
+            {
+                const AVInfo& valInfo = declaratorInfos[declInfoI].valInfos[valI];
+                if (!valInfo.pExtracted) continue;
+                // Textual value
+                if (valInfo.type == AVType::Textual)
+                {
+                    valInfo.pExtracted->textualVal = valInfo.defaultVal;
+                }
+                // Numeric value
+                else if (valInfo.type == AVType::Numeric)
+                {
+                    uint64_t result = Utils::strToSize(valInfo.defaultVal, valInfo.numeric.zeroIsUnacceptable,
+                                                        alwaysBinaryUnits, valInfo.numeric.unitExpected);
+                    if (result >= (uint64_t)Utils::SizeSig::LEAST_ERROR)
+                    {
+                        std::cerr << "(numeric) invalid valInfo.defaultVal given to"
+                                    " validatePrintExtractVals() in parseIns()\n";
+                        exit(EXIT_FAILURE);
+                    }
+                    else valInfo.pExtracted->numericVal = result;
+                }
+            }
+        }
+
+        return Utils::ErrorState::Success;
+    };
+
+    // Cuts line into segments without spaces
+    auto cutLine = [&]() -> std::vector<std::string_view>
+    {
+        std::vector<std::string_view> results;
+        for (size_t i = 0; i < insView.length(); i++)
+        {
+            if (!isspace((unsigned char)insView[i]))
+            {
+                size_t startI = i;
+                for (; i < insView.length(); i++)
+                    if (isspace((unsigned char)insView[i])) break;
+                size_t afterEndI = i;
+                std::string_view segmentView = insView.substr(startI, afterEndI - startI);
+                if (!segmentView.empty()) results.push_back(segmentView);
+            }
+        }
+        return results;
+    };
     // Creates generic switch instruction info (i made this for one-liners)
     auto makeSwitchInfo = [](bool value) -> InsInfo
     {
@@ -133,15 +397,15 @@ std::pair<Inss::Ins, Utils::ErrorState> parseIns(const std::string_view insView,
     
     // All whitespace no segments
     if (segments.empty())
+    {
         resultIns.type = InsType::InternalSkip;
+    }
     // help
     else if (Utils::compareLow(segments[0], "help"))
     {
-        if (segments.size() > 1)
-        {
-            printInvalidInsError("expected no operands", "");
-            error = true;
-        }
+        if (validatePrintExtractVals(segments, {
+            ADInfo("help", true, {})
+        }) != Utils::ErrorState::Success) error = true;
         else
         {
             Utils::printHelp();
@@ -152,148 +416,89 @@ std::pair<Inss::Ins, Utils::ErrorState> parseIns(const std::string_view insView,
     // allyes
     else if (Utils::compareLow(segments[0], "allyes"))
     {
-        if (segments.size() > 1)
-        {
-            printInvalidInsError("expected no operands", "");
-            error = true;
-        }
-        else resultIns = Ins(InsType::SetYes, makeSwitchInfo(true));
+        if (validatePrintExtractVals(segments, {
+            ADInfo("allyes", true, {})
+        }) != Utils::ErrorState::Success) error = true;
+        else
+            resultIns = Ins(InsType::SetYes, makeSwitchInfo(true));
     }
     // manyes
     else if (Utils::compareLow(segments[0], "manyes"))
     {
-        if (segments.size() > 1)
-        {
-            printInvalidInsError("expected no operands", "");
-            error = true;
-        }
-        else resultIns = Ins(InsType::SetYes, makeSwitchInfo(false));
+        if (validatePrintExtractVals(segments, {
+            ADInfo("manyes", true, {})
+        }) != Utils::ErrorState::Success) error = true;
+        else
+            resultIns = Ins(InsType::SetYes, makeSwitchInfo(false));
     }
     
     // binary
     else if (Utils::compareLow(segments[0], "binary"))
     {
-        if (segments.size() > 1)
-        {
-            printInvalidInsError("expected no operands", "");
-            error = true;
-        }
-        else resultIns = Ins(InsType::SetBinary, makeSwitchInfo(true));
+        if (validatePrintExtractVals(segments, {
+            ADInfo("binary", true, {})
+        }) != Utils::ErrorState::Success) error = true;
+        else
+            resultIns = Ins(InsType::SetBinary, makeSwitchInfo(true));
     }
     // decimal
     else if (Utils::compareLow(segments[0], "decimal"))
     {
-        if (segments.size() > 1)
-        {
-            printInvalidInsError("expected no operands", "");
-            error = true;
-        }
-        else resultIns = Ins(InsType::SetBinary, makeSwitchInfo(false));
+        if (validatePrintExtractVals(segments, {
+            ADInfo("decimal", true, {})
+        }) != Utils::ErrorState::Success) error = true;
+        else
+            resultIns = Ins(InsType::SetBinary, makeSwitchInfo(false));
     }
 
     // openvd
     else if (Utils::compareLow(segments[0], "openvd"))
     {
         // e.g. openvd x.img size 32gib sectsize 4096B
-        // Parse e.g. openvd x.img
-        if (segments.size() == 1)
-        {
-            printInvalidInsError("expected a file name", "");
-            error = true;
-        }
+        ExtractedAV path, size, sectorSize;
+        if (validatePrintExtractVals(segments, {
+            ADInfo("openvd", true, {
+                AVInfo::makeTextual("file name", TextualAVType::FileOrNonePath, {}, "", &path)
+            }),
+            ADInfo("size", false, {
+                AVInfo::makeNumeric("size", true, true, "64MiB", &size)
+            }),
+            ADInfo("sectsize", false, {
+                AVInfo::makeNumeric("sector size", true, true, "512B", &sectorSize)
+            })
+        }) != Utils::ErrorState::Success) error = true;
         else
         {
-            resultIns.info.openDisk.setPath(&resultIns, segments[1]);
-            resultIns.info.openDisk.isReal = false;
-        }
-        for (size_t i = 2; !error && i < segments.size(); i+= 2)
-        {
-            // Parse e.g. size 32gib
-            if (Utils::compareLow(segments[i], "size"))
-            {
-                if (resultIns.info.openDisk.size != 0)
-                {
-                    printInvalidInsError("repeated size", "");
-                    error = true;
-                }
-                else if (i +1 == segments.size())
-                {
-                    printInvalidInsError("expected size argument", segments[i]);
-                    error = true;
-                }
-                else
-                {
-                    uint64_t val = Utils::strToSize(segments[i +1], true, alwaysBinaryUnits, true);
-                    error = checkAndPrintErroneousSize(val, segments[i], segments[i +1],
-                                                            "size is too big");
-                    if (!error) resultIns.info.openDisk.size = val;
-                }
-            }
-            // Parse e.g. sectsize 4096B
-            else if (Utils::compareLow(segments[i], "sectsize"))
-            {
-                if (resultIns.info.openDisk.sectorSize != 0)
-                {
-                    printInvalidInsError("repeated sector size", "");
-                    error = true;
-                }
-                else if (i +1 == segments.size())
-                {
-                    printInvalidInsError("expected sector size argument", segments[i]);
-                    error = true;
-                }
-                else
-                {
-                    uint64_t val = Utils::strToSize(segments[i +1], true, alwaysBinaryUnits, true);
-                    error = checkAndPrintErroneousSize(val, segments[i], segments[i +1],
-                                                            "sector size is too big");
-                    if (!error)
-                    {
-                        resultIns.info.openDisk.sectorSize = val;
-                        resultIns.info.openDisk.physicalSectorSize = val;
-                    }
-                }
-            }
-            // Other invalid subinstruction
-            else
-            {
-                printInvalidInsError("invalid sub-instruction", segments[i]);
-                error = true;
-            }
-        }
-        if (!error)
-        {
-            if (resultIns.info.openDisk.size == 0)
-            {
-                resultIns.info.openDisk.size = Utils::strToSize("64MiB", true, true, true);
-            }
-            if (resultIns.info.openDisk.sectorSize == 0)
-            {
-                resultIns.info.openDisk.sectorSize = 512;
-                resultIns.info.openDisk.physicalSectorSize = 512;
-            }
             resultIns.type = InsType::OpenDisk;
+            resultIns.info.openDisk.isReal = false;
+            resultIns.info.openDisk.setPath(&resultIns, path.textualVal);
+            resultIns.info.openDisk.size = size.numericVal;
+            resultIns.info.openDisk.sectorSize = sectorSize.numericVal;
+            resultIns.info.openDisk.physicalSectorSize = sectorSize.numericVal;
         }
     }
+    // scheme
+    //else if (Utils::compareLow(segments[0], "scheme"))
+    //{
+    //}
     
-    // Save
+    // save
     else if (Utils::compareLow(segments[0], "save"))
     {
-        if (segments.size() > 1)
-        {
-            printInvalidInsError("expected no operands", "");
-            error = true;
-        }
-        else resultIns = Ins(InsType::Save, InsInfo());
+        if (validatePrintExtractVals(segments, {
+            ADInfo("save", true, {})
+        }) != Utils::ErrorState::Success) error = true;
+        else
+            resultIns = Ins(InsType::Save, InsInfo());
     }
-    // Stop, Exit, QUit
+    // stop, exit, quit
     else if (Utils::compareLow(segments[0], "stop")
             || Utils::compareLow(segments[0], "exit")
             || Utils::compareLow(segments[0], "quit"))
     {
         if (segments.size() > 1)
         {
-            printInvalidInsError("expected no operands", "");
+            printInvalidInsError("unexpected arguments", "");
             error = true;
         }
         else resultIns = Ins(InsType::Exit, InsInfo());
@@ -307,12 +512,12 @@ std::pair<Inss::Ins, Utils::ErrorState> parseIns(const std::string_view insView,
     return {resultIns, (!error)? Utils::ErrorState::Success : Utils::ErrorState::Failure};
 }
 
-// Validates commands file and returns instructions vector (empty if contains errors)
+// Validates instructions file and returns instructions vector (empty if contains errors)
 std::vector<Inss::Ins> parseFile(const char* path, bool alwaysBinaryUnits)
 {
     using namespace Inss;
     // Returns:
-    //   1. Clean string view (no comments or multi-line continue symbol)
+    //   1. Clean string view (no comments or line-continue character)
     //   2. Bool (true = instruction continues into the next line (mult-line))
     auto cleanLine = [](std::string_view lineView) -> std::pair<std::string_view, bool>
     {
@@ -323,19 +528,19 @@ std::vector<Inss::Ins> parseFile(const char* path, bool alwaysBinaryUnits)
         {
             if (lineView[i] == '#' // Comment
             && (i == 0 || isspace((unsigned char)lineView[i -1])) ) // Nothing or space before it
-                                                    //   (hashtag may be part of instructions)
+            // Hashtag may be part of instructions so gotta ensure nothing is stuck behind it like "something#"
             {
                 lineView.remove_suffix(i +1);
                 break;
             }
         }
-        // Check for multi-line continue (and remove it)
+        // Check for and remove line-continue character
         bool continueNextLine = false;
         for (size_t i = lineView.size() -1; i != SIZE_MAX; i--)
         {
             if (isspace((unsigned char)lineView[i])) continue;
             else if (lineView[i] != '\\') break; // Normal character (not space nor the symbol)
-            else // Multi-line continue symbol
+            else // line-continue character "\"
             {
                 continueNextLine = true;
                 lineView.remove_suffix(lineView.size() -i);
@@ -366,7 +571,7 @@ std::vector<Inss::Ins> parseFile(const char* path, bool alwaysBinaryUnits)
     while (std::getline(fileStream, line) || expectingNextLine) // Line = "" if nothing left in stream
     {
         // If expectingNextLine && line == "": expectingNextLine = false
-        //   then the loop stops even if the last line has a redundant multi-line symbol
+        //   then the loop stops even if the last line has a redundant line-continue character "\"
         std::pair<std::string_view, bool> cleanResult = cleanLine(line);
         line = cleanResult.first;
         expectingNextLine = cleanResult.second;
@@ -380,7 +585,7 @@ std::vector<Inss::Ins> parseFile(const char* path, bool alwaysBinaryUnits)
         // Parse
         Ins ins = NONE_INS;
         Utils::ErrorState errorState = Utils::ErrorState::Failure;
-        std::pair<Ins, Utils::ErrorState> parseResult = parseIns(insString, alwaysBinaryUnits);
+        std::pair<Ins, Utils::ErrorState> parseResult = parseIns(insString, alwaysBinaryUnits, false);
         insString = ""; // Clear for next instruction
         ins = parseResult.first;
         errorState = parseResult.second;
@@ -416,7 +621,7 @@ std::vector<Inss::Ins> parseDirectArgs(size_t argC, const char* const* argV, boo
     
     // Loop over argument segments
     std::string insString = "";
-    for (size_t i = 0; i < argC; i++)
+    for (size_t i = 1; i < argC; i++)
     {
         // Instruction separator for direct argument passing
         if (!strcmp(argV[i], "-"))
@@ -424,7 +629,7 @@ std::vector<Inss::Ins> parseDirectArgs(size_t argC, const char* const* argV, boo
             // Add argument segments with padding together
             // This is kinda dumb because parseIns cuts it back again but idc
             insString = ""; // Clear previous string
-            for (size_t j = 0; j < i; j++)
+            for (size_t j = 1; j < i; j++)
             {
                 insString.append(argV[j]);
                 insString += ' ';
@@ -432,7 +637,7 @@ std::vector<Inss::Ins> parseDirectArgs(size_t argC, const char* const* argV, boo
             // Parse
             Ins ins = NONE_INS;
             Utils::ErrorState errorState = Utils::ErrorState::Failure;
-            std::pair<Ins, Utils::ErrorState> parseResult = parseIns(insString, alwaysBinaryUnits);
+            std::pair<Ins, Utils::ErrorState> parseResult = parseIns(insString, alwaysBinaryUnits, false);
             ins = parseResult.first;
             errorState = parseResult.second;
             // Error happened
@@ -461,5 +666,5 @@ Inss::Ins parseTerminalLine(bool alwaysBinaryUnits)
     using namespace Inss;
     std::string line;
     std::getline(std::cin, line);
-    return parseIns(line, alwaysBinaryUnits).first;
+    return parseIns(line, alwaysBinaryUnits, true).first;
 }

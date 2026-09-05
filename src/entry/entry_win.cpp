@@ -28,7 +28,7 @@ int main()
     std::vector<std::string> argStringBuffer;
     for (int i = 0; i < argC; ++i)
     {
-        std::pair<std::string, Utils::ErrorState> result = SSUtils::utf16to8((char16_t*)argVW[i]);
+        std::pair<std::string, Utils::ErrorState> result = Utils::utf16to8((char16_t*)argVW[i]);
         if (result.second != Utils::ErrorState::Success)
         {
             std::cerr << "invalid Unicode character in arguments\n";

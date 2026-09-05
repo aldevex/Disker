@@ -3,7 +3,7 @@
 #include <cstdio>
 #include <string>
 #include <iostream>
-#include "../algos/utils.hpp"
+#include "../algos/ssutils.hpp"
 #include "../structs/generic.hpp"
 //#include "../structs/mbr.hpp"
 //#include "structs/gpt.hpp"
@@ -65,6 +65,9 @@ void applyIns(const Inss::Ins& ins)
     case InsType::Save:
         if (!state.disk.isRealDisk)
         {
+            // REPLACE THIS WITH WINAPI ACCELERATED FUNCTIONS
+            // ALSO CHECK IF DISK IMAGE ALREADY EXISTS AND IF IT CONTAINS DATA
+            //   OR IS GETTING SHRUNK DOWN. READ DISK STRUCTURES FIRST BEFORE WRITING
             std::vector<uint8_t> hugeImgBuffer(state.disk.size, 0);
             Utils::writeFile(state.disk.path.c_str(), hugeImgBuffer.data(), hugeImgBuffer.size());
         }
