@@ -11,9 +11,9 @@ Core files (core/):
 "state.hpp": Program instructions state. Included by "main_tui.hpp" or "main_gui.hpp".
 
 Generic code files (algos/):
-"utils.hpp": Generic utility functions.
 "inss.hpp": Code for Disker instructions applied by "state.hpp".
-"ssutils.hpp": Declarations for system-specific utility functions.
+"utils.hpp": Generic utility functions.
+"ssutils.hpp": Declarations for system-specific utility functions (same namespace as "utils.hpp").
 "ssutils_linux.cpp": Linux implementation of "ssutils.hpp".
 "ssutils_win.cpp": Windows implementation of "ssutils.hpp".
 
