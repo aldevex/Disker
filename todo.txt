@@ -1,15 +1,13 @@
 
-- Make direct arguments passing (parseDirectArgs)
-    like unix (Disker -openvd... -format ...) instead of (Disker - openvd ... - format ...)
-    and make it work on loop end, it seems to leave the last segment if no "-" follows after
-    and fix it in general it's not working
-- Accelerate writing big image files with winapi (write func that takes total file size
-    and vector of buffers and file offsets to write)
+- Add getPathType function
+- Add path validation to validatePrintExtractVals() @parseIns(),
+    and disk image & generic file writing
 - Before writing image use function to read image if it exists
     that returns: scheme, mbr, gpt header and array also error status
     and does validation to ensure path isn't a real disk
     and print stats for the opened disk image after openvd instruction
-- Add path validation to validatePrintExtractOperands() in parseIns() and disk image and generic file writing
+- Accelerate writing big image files with winapi (write func that takes total file size
+    and vector of buffers and file offsets to write)
 - Add "whats sys" instruction to get disk paths and each bound partition
 - Add ability to use "whats" on unopened disks (virtual and real)
 - Check invalid disk/sector sizes
@@ -20,7 +18,7 @@
 - Add reading and writing MBR partitions to img files
 
 For later:
-- Add getPathType function
+- Make getPathType() check disk and volume paths too
 - Add function to convert volume path/name/letter to disk path
 - Add functions to get all volumes and partitions from disk path
 - Add windows getDiskInfo, and disk IO (with a bunch of safety measures)
