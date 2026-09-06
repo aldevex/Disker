@@ -35,7 +35,7 @@ int TUIMain(int argC, char** argV)
             // Instructions via file
             else
             {
-                std::vector<Inss::Ins> instructions = parseFile(argV[2], state.alwaysBinaryUnits);
+                std::vector<Inss::Ins> instructions = parseFile(argV[1], state.alwaysBinaryUnits);
                 for (const Inss::Ins& ins : instructions)
                     applyIns(ins);
             }
@@ -610,6 +610,7 @@ std::vector<Inss::Ins> parseFile(const char* path, bool alwaysBinaryUnits)
     return results;
 }
 
+// First segment MUST start with "-" checked before call
 std::vector<Inss::Ins> parseDirectArgs(size_t argC, const char* const* argV, bool alwaysBinaryUnits)
 {
     using namespace Inss;
@@ -620,40 +621,48 @@ std::vector<Inss::Ins> parseDirectArgs(size_t argC, const char* const* argV, boo
     size_t errorCount = 0;
     
     // Loop over argument segments
-    std::string insString = "";
-    for (size_t i = 1; i < argC; i++)
+    size_t startJ = 1; // Index of start of instruction before the end or next instruction
+    for (size_t i = 1; i <= argC; i++)
     {
-        // Instruction separator for direct argument passing
-        if (!strcmp(argV[i], "-"))
+        // Skip if didn't reach end or new instruction
+        if (i != argC && strncmp(argV[i], "-", 1)) continue;
+        
+        // Add argument segments with padding together
+        // This is kinda dumb because parseIns() cuts it back again but idc 30 picosecond delay
+        std::string insString = "";
+        for (size_t j = startJ; j < i; j++)
         {
-            // Add argument segments with padding together
-            // This is kinda dumb because parseIns cuts it back again but idc
-            insString = ""; // Clear previous string
-            for (size_t j = 1; j < i; j++)
-            {
-                insString.append(argV[j]);
-                insString += ' ';
-            }
-            // Parse
-            Ins ins = NONE_INS;
-            Utils::ErrorState errorState = Utils::ErrorState::Failure;
-            std::pair<Ins, Utils::ErrorState> parseResult = parseIns(insString, alwaysBinaryUnits, false);
-            ins = parseResult.first;
-            errorState = parseResult.second;
-            // Error happened
-            if (errorState != Utils::ErrorState::Success)
-            {
-                errorCount++;
-                results.clear();
-                // Don't return, but keep checking more errors
-            }
-            // Add to results if: no error happened & not a None (used for skipping whitespace/comments)
-            if (errorCount == 0 && ins.type != InsType::None)
-            {
-                results.push_back(ins);
-                if (ins.type == InsType::SetBinary) alwaysBinaryUnits = ins.info.switchValue;
-            }
+            // Remove "-" off the first segment
+            std::string_view seg((j == startJ)? (argV[j] +1) : argV[j]);
+            // Remove new line characters
+            if (!seg.empty() && seg.back() == '\n') seg.remove_suffix(1);
+            if (!seg.empty() && seg.back() == '\r') seg.remove_suffix(1);
+            // Add segment + padding space if not last segment
+            insString.append(seg);
+            if (j +1 != i) insString += ' ';
         }
+        startJ = i; // Set start for the current (at [i]) instruction
+
+        // Parse
+        Ins ins = NONE_INS;
+        Utils::ErrorState errorState = Utils::ErrorState::Failure;
+        std::pair<Ins, Utils::ErrorState> parseResult = parseIns(insString, alwaysBinaryUnits, false);
+        ins = parseResult.first;
+        errorState = parseResult.second;
+        // Error happened
+        if (errorState != Utils::ErrorState::Success)
+        {
+            errorCount++;
+            results.clear();
+            // Don't return, but keep checking more errors
+        }
+        // Add to results if: no error happened & not a None (used for skipping whitespace/comments)
+        if (errorCount == 0 && ins.type != InsType::None)
+        {
+            results.push_back(ins);
+            if (ins.type == InsType::SetBinary) alwaysBinaryUnits = ins.info.switchValue;
+        }
+        
         // 10 errors max so user isn't overwhelmed
         if (errorCount == 10) break;
     }
