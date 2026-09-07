@@ -2,13 +2,14 @@
 #include <cstdio>
 #include <string>
 #include <iostream>
-#include "../algos/utils.hpp"
+#include <sstream>
+#include "../utils/utils.hpp"
 //#include "structs/generic.hpp"
 //#include "structs/mbr.hpp"
 //#include "structs/gpt.hpp"
 //#include "structs/fat32.hpp"
-#include "../algos/inss.hpp"
-#include "state.hpp"
+#include "./inss.hpp"
+#include "./state.hpp"
 
 std::vector<Inss::Ins> parseFile(const char* path, bool alwaysBinaryUnits);
 std::vector<Inss::Ins> parseDirectArgs(size_t argC, const char* const* argV, bool alwaysBinaryUnits);
@@ -64,8 +65,9 @@ int TUIMain(int argC, char** argV)
 
 // Returns parsed instruction (None on error), and error state
 // Prints error in instruction on encounter
-std::pair<Inss::Ins, Utils::ErrorState> parseIns(const std::string_view insView, bool alwaysBinaryUnits,
-                                                bool callerIsParsingASingleLine)
+std::pair<Inss::Ins, Utils::ErrorState> parseIns(const std::string_view insView,
+                                                const std::vector<std::string_view>& segments,
+                                                bool alwaysBinaryUnits, bool callerIsParsingASingleLine)
 {
     using namespace Inss;
     // Prints: invalid instruction "$insView" ($reason "$specifiedText")
@@ -284,12 +286,31 @@ std::pair<Inss::Ins, Utils::ErrorState> parseIns(const std::string_view insView,
                     // Path types
                     else
                     {
-                        // ********************************************
-                        // ********************************************
-                        // Code to validate path types should be here
-                        // ********************************************
-                        // ********************************************
-                        valid = true; 
+                        Utils::PathType pathType = Utils::getPathType(valSeg);
+                        // Don't run any checks if path is invalid
+                        if (pathType == Utils::PathType::Invalid)
+                        {
+                        }
+                        else if (valInfo.textual.type == TextualAVType::FileOrNonePath)
+                        {
+                            if (pathType == Utils::PathType::File || pathType == Utils::PathType::None)
+                                valid = true;
+                        }
+                        else if (valInfo.textual.type == TextualAVType::FilePath)
+                        {
+                            if (pathType == Utils::PathType::File)
+                                valid = true;
+                        }
+                        else if (valInfo.textual.type == TextualAVType::DirPath)
+                        {
+                            if (pathType == Utils::PathType::Dir)
+                                valid = true;
+                        }
+                        else if (valInfo.textual.type == TextualAVType::DiskPath)
+                        {
+                            if (pathType == Utils::PathType::DiskDirect)
+                                valid = true;
+                        }
                     }
                     // Print error or set extracted value
                     if (!valid)
@@ -365,24 +386,6 @@ std::pair<Inss::Ins, Utils::ErrorState> parseIns(const std::string_view insView,
         return Utils::ErrorState::Success;
     };
 
-    // Cuts line into segments without spaces
-    auto cutLine = [&]() -> std::vector<std::string_view>
-    {
-        std::vector<std::string_view> results;
-        for (size_t i = 0; i < insView.length(); i++)
-        {
-            if (!isspace((unsigned char)insView[i]))
-            {
-                size_t startI = i;
-                for (; i < insView.length(); i++)
-                    if (isspace((unsigned char)insView[i])) break;
-                size_t afterEndI = i;
-                std::string_view segmentView = insView.substr(startI, afterEndI - startI);
-                if (!segmentView.empty()) results.push_back(segmentView);
-            }
-        }
-        return results;
-    };
     // Creates generic switch instruction info (i made this for one-liners)
     auto makeSwitchInfo = [](bool value) -> InsInfo
     {
@@ -391,7 +394,6 @@ std::pair<Inss::Ins, Utils::ErrorState> parseIns(const std::string_view insView,
         return result;
     };
     
-    std::vector<std::string_view> segments = cutLine();
     Ins resultIns = NONE_INS; // Keep type as None on errors
     bool error = false; // Set this on error discovery
     
@@ -505,7 +507,11 @@ std::pair<Inss::Ins, Utils::ErrorState> parseIns(const std::string_view insView,
     }
     
     // Unsupported instruction
-    if (!error && resultIns.type == InsType::None) printInvalidInsError("unsupported instruction", "");
+    if (!error && resultIns.type == InsType::None)
+    {
+        printInvalidInsError("unsupported instruction", "");
+        error = true;
+    }
     else if (resultIns.type == InsType::InternalSkip) resultIns.type = InsType::None;
 
     // Return
@@ -565,7 +571,8 @@ std::vector<Inss::Ins> parseFile(const char* path, bool alwaysBinaryUnits)
     }
 
     // Loop over the file
-    std::string insString = "";
+    std::string insString;
+    std::vector<std::string_view> insSegments;
     std::string line = "";
     bool expectingNextLine = false;
     while (std::getline(fileStream, line) || expectingNextLine) // Line = "" if nothing left in stream
@@ -575,18 +582,53 @@ std::vector<Inss::Ins> parseFile(const char* path, bool alwaysBinaryUnits)
         std::pair<std::string_view, bool> cleanResult = cleanLine(line);
         line = cleanResult.first;
         expectingNextLine = cleanResult.second;
-        // Append in all cases + space on both sides padding
-        insString += ' ';
-        insString.append(cleanResult.first);
-        insString += ' ';
+        // Cut line into segments and append to total instruction segments
+        for (size_t i = 0; i < line.length(); i++)
+        {
+            // Skip spaces
+            if (isspace(line[i])) continue;
+            // Convert quoted text to one segment
+            else if (line[i] == '\"' || line[i] == '\'')
+            {
+                size_t j = i +1;
+                for (; j <= line.length(); j++)
+                {
+                    if (j == line.length()
+                    || line[j] == '\"' || line[j] == '\'')
+                        break;
+                }
+                // Add segment, no prefix padding space if last segment
+                std::string_view seg = line.substr(i, j -1);
+                if (!expectingNextLine && i +1 == line.length()) insString += ' ';
+                insString.append(seg);
+                insSegments.push_back(seg);
+                i = j +1;
+            }
+            // Normal unquoted segment
+            else
+            {
+                size_t j = i +1;
+                for (; j <= line.length(); j++)
+                {
+                    if (j == line.length() || isspace(line[j]))
+                        break;
+                }
+                // Add segment, no prefix padding space if last segment
+                std::string_view seg = line.substr(i, j -1);
+                if (!expectingNextLine && i +1 == line.length()) insString += ' ';
+                insString.append(seg);
+                insSegments.push_back(seg);
+                i = j +1;
+            }
+        }
         // Continue adding if expecting a new line
         if (expectingNextLine) continue;
         
         // Parse
         Ins ins = NONE_INS;
         Utils::ErrorState errorState = Utils::ErrorState::Failure;
-        std::pair<Ins, Utils::ErrorState> parseResult = parseIns(insString, alwaysBinaryUnits, false);
-        insString = ""; // Clear for next instruction
+        std::pair<Ins, Utils::ErrorState> parseResult = parseIns(insString, insSegments, alwaysBinaryUnits, false);
+        insSegments.clear(); // Clear segments for next instruction
         ins = parseResult.first;
         errorState = parseResult.second;
         // Error happened
@@ -627,26 +669,24 @@ std::vector<Inss::Ins> parseDirectArgs(size_t argC, const char* const* argV, boo
         // Skip if didn't reach end or new instruction
         if (i != argC && strncmp(argV[i], "-", 1)) continue;
         
-        // Add argument segments with padding together
-        // This is kinda dumb because parseIns() cuts it back again but idc 30 picosecond delay
-        std::string insString = "";
+        // Remove "-" off the first segment
+        std::string insString;
+        std::vector<std::string_view> insSegments;
         for (size_t j = startJ; j < i; j++)
         {
             // Remove "-" off the first segment
             std::string_view seg((j == startJ)? (argV[j] +1) : argV[j]);
-            // Remove new line characters
-            if (!seg.empty() && seg.back() == '\n') seg.remove_suffix(1);
-            if (!seg.empty() && seg.back() == '\r') seg.remove_suffix(1);
             // Add segment + padding space if not last segment
             insString.append(seg);
             if (j +1 != i) insString += ' ';
+            insSegments.push_back(seg);
         }
         startJ = i; // Set start for the current (at [i]) instruction
 
         // Parse
         Ins ins = NONE_INS;
         Utils::ErrorState errorState = Utils::ErrorState::Failure;
-        std::pair<Ins, Utils::ErrorState> parseResult = parseIns(insString, alwaysBinaryUnits, false);
+        std::pair<Ins, Utils::ErrorState> parseResult = parseIns(insString, insSegments, alwaysBinaryUnits, false);
         ins = parseResult.first;
         errorState = parseResult.second;
         // Error happened
@@ -673,7 +713,43 @@ std::vector<Inss::Ins> parseDirectArgs(size_t argC, const char* const* argV, boo
 Inss::Ins parseTerminalLine(bool alwaysBinaryUnits)
 {
     using namespace Inss;
+
     std::string line;
     std::getline(std::cin, line);
-    return parseIns(line, alwaysBinaryUnits, true).first;
+    // Remove windows carriage return
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    // Cut line into segments
+    std::vector<std::string_view> insSegments;
+    for (size_t i = 0; i < line.length(); i++)
+    {
+        // Skip spaces
+        if (isspace(line[i])) continue;
+        // Convert quoted text to one segment
+        else if (line[i] == '\"' || line[i] == '\'')
+        {
+            size_t j = i +1;
+            for (; j <= line.length(); j++)
+            {
+                if (j == line.length()
+                || line[j] == '\"' || line[j] == '\'')
+                    break;
+            }
+            insSegments.push_back(line.substr(i, j -1));
+            i = j +1;
+        }
+        // Normal unquoted segment
+        else
+        {
+            size_t j = i +1;
+            for (; j <= line.length(); j++)
+            {
+                if (j == line.length() || isspace(line[j]))
+                    break;
+            }
+            insSegments.push_back(line.substr(i, j -1));
+            i = j +1;
+        }
+    }
+
+    return parseIns(line, insSegments, alwaysBinaryUnits, true).first;
 }

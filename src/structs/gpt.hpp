@@ -7,7 +7,7 @@
 #include <random>
 #include <span>
 #include "../utils.hpp"
-namespace GPTns {
+namespace GPT {
 #pragma pack(push, 1)
 
 // Basic GPT disk architecture:

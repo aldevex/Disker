@@ -4,9 +4,9 @@
 #include <cstring>
 #include <iostream>
 #include <span>
-#include "../algos/utils.hpp"
+#include "../utils/utils.hpp"
 // MBR (Namespace)
-namespace MBRns {
+namespace MBR {
 #pragma pack(push, 1)
 
 enum class BootIndicator : uint8_t
@@ -67,16 +67,27 @@ struct MBRData
     PartitionEntry partitionTable[4] = {};
     uint16_t signature = 0xAA55;
 
-    MBRData(const uint8_t* pCode446, const PartitionEntry* pPartitionEntries4)
+    MBRData() = default;
+    MBRData(const uint8_t* pCode446, const std::vector<PartitionEntry>& partitionEntries4max)
     {
         if (pCode446 != nullptr) memcpy(code, pCode446, 446);
         
-        if (pPartitionEntries4 == nullptr)
+        if (partitionEntries4max.size() > 4)
         {
-            std::cerr << "pPartitionEntries4 = nullptr given to MBRData constructor\n";
+            std::cerr << "partitionEntries4max.size() > 4 given to MBRData constructor\n";
             exit(EXIT_FAILURE);
         }
-        else memcpy(partitionTable, pPartitionEntries4, sizeof(PartitionEntry) *4);
+        else for (size_t i = 0; i < partitionEntries4max.size(); i++)
+            partitionTable[i] = partitionEntries4max[i];
+    }
+    MBRData(const uint8_t* pMBR512Bytes)
+    {
+        if (pMBR512Bytes == nullptr)
+        {
+            std::cerr << "pMBR512Bytes == nullptr given to MBRData constructor\n";
+            exit(EXIT_FAILURE);
+        }
+        else memcpy(this, pMBR512Bytes, 512);
     }
 };
 

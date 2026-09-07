@@ -1,24 +1,18 @@
 
-- Add getPathType function
-- Add path validation to validatePrintExtractVals() @parseIns(),
-    and disk image & generic file writing
-- Before writing image use function to read image if it exists
-    that returns: scheme, mbr, gpt header and array also error status
-    and does validation to ensure path isn't a real disk
-    and print stats for the opened disk image after openvd instruction
-- Accelerate writing big image files with winapi (write func that takes total file size
-    and vector of buffers and file offsets to write)
-- Add "whats sys" instruction to get disk paths and each bound partition
-- Add ability to use "whats" on unopened disks (virtual and real)
-- Check invalid disk/sector sizes
-- Add questions and warnings on critical instructions / changing previous data
+- MAKE A CLEAR PIPELINE
+    what happens if the user is overwriting a file? a real disk? user just read the file?
+    who prints the errors?
+    mostly problematic at applyIns() calling writeImage() and readImage
+    how does R/W go?
+    editing already existing images without recreation?
+
+- Check invalid disk/sector sizes (that don't align with sectors or alignment)
+    just give a warning, or error
 - Make PartitionInfo struct work well for both MBR and GPT formats
+- copy() methods for GPT structures, to copy directly from sectors and validate crc32 and general data
 - Add MBR and GPT partition methods to get PartitionInfo struct
 - Add fs structures (VBR, FSInfo, and FAT)
-- Add reading and writing MBR partitions to img files
-
-For later:
-- Make getPathType() check disk and volume paths too
+- Make getPathType() check volume paths
 - Add function to convert volume path/name/letter to disk path
 - Add functions to get all volumes and partitions from disk path
 - Add windows getDiskInfo, and disk IO (with a bunch of safety measures)
@@ -26,12 +20,20 @@ For later:
     & on attempting to edit real disks (especially when theyre partitioned and/or have files)
 - Add way to save commands from commandline into a file for reuse
     (remove unnecessary instructions whose subjects get overwritten after)
+- Add MBR partitions, GPT, FAt32
 - Add saving variables into Disker for quick and easy reuse
 - Make code work on big endian environments too
     (almost all disk structures (partitions/file systems) are little endian by themselves
     so youll need struct getters or swapping on RW)
-- Add Linux support
-- Add GUI
-- Add code documents, code comments, help string (both direct argument or instruction), usage.txt
-- Make a logo for the program
+- Make sizeToStr to reverse strToSize for printing
 - Add version printing
+- Add code documents, code comments, help string (both direct argument or instruction), usage.txt
+
+
+
+- Provide windows user binary and portable archive for linux
+- Add Linux support (ssutils code)
+- Add support for more image file formats and file systems
+    don't make .iso files sparse because they're supposed to be filled anyway
+- Add GUI
+- Rewrite in C? just make dynamic string and array functions

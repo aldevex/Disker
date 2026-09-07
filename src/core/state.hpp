@@ -3,12 +3,12 @@
 #include <cstdio>
 #include <string>
 #include <iostream>
-#include "../algos/ssutils.hpp"
-#include "../structs/generic.hpp"
+#include "../utils/ssutils.hpp"
+#include "../structs/disk.hpp"
 //#include "../structs/mbr.hpp"
 //#include "structs/gpt.hpp"
 //#include "structs/fat32.hpp"
-#include "../algos/inss.hpp"
+#include "./inss.hpp"
 
 // Only TUI/GUI main functions and applyIns() may access this directly
 static struct _StateStruct
@@ -20,7 +20,7 @@ private:
     bool allYes = false;
     bool alwaysBinaryUnits = true;
 
-    Generic::Disk disk;
+    Disk::Disk disk;
 
     /*
     //Generic::Scheme schemeType;
@@ -56,20 +56,43 @@ void applyIns(const Inss::Ins& ins)
         state.alwaysBinaryUnits = ins.info.switchValue;
         break;
     case InsType::OpenDisk:
-        // Or make an open disk function ig better
-        state.disk = Generic::Disk(ins.info.openDisk.getPath(&ins), ins.info.openDisk.isReal,
+        if (!ins.info.openDisk.isReal)
+        {
+            if (Utils::getPathType(ins.info.openDisk.getPath(&ins)) == Utils::PathType::File)
+            {
+                // .data() is ok here because view points to a full std::string
+                Utils::ReadImageInfo readInfo = Utils::readImage(ins.info.openDisk.getPath(&ins).data());
+                if (readInfo.errorState != Utils::ErrorState::Success) return;
+                std::cout << "Image file \"" << ins.info.openDisk.getPath(&ins) << "\":"
+                << "\n  - Size: " << readInfo.disk.size << " bytes"
+                << "\n  - Scheme: ";
+                if (readInfo.scheme == Disk::Scheme::MBR) std::cout << "MBR";
+                else std::cout << "GPT";
+                std::cout << "\n";
+            }
+            state.disk = Disk::Disk(ins.info.openDisk.getPath(&ins), ins.info.openDisk.isReal,
                                     ins.info.openDisk.size, ins.info.openDisk.sectorSize,
                                     ins.info.openDisk.physicalSectorSize,
                                     Utils::strToSize("1MiB", true, true, true));
+        }
         break;
     case InsType::Save:
         if (!state.disk.isRealDisk)
         {
-            // REPLACE THIS WITH WINAPI ACCELERATED FUNCTIONS
-            // ALSO CHECK IF DISK IMAGE ALREADY EXISTS AND IF IT CONTAINS DATA
-            //   OR IS GETTING SHRUNK DOWN. READ DISK STRUCTURES FIRST BEFORE WRITING
-            std::vector<uint8_t> hugeImgBuffer(state.disk.size, 0);
-            Utils::writeFile(state.disk.path.c_str(), hugeImgBuffer.data(), hugeImgBuffer.size());
+            if (!state.allYes
+            && Utils::getPathType(state.disk.path) == Utils::PathType::File)
+            {
+                std::cout << "Are you sure you want to overwrite \"" << state.disk.path << "\"?\n"
+                << "yes/no" << std::endl;
+                // Get answer
+                std::string line;
+                std::getline(std::cin, line);
+                // Remove new line characters
+                if (!line.empty() && line.back() == '\n') line.pop_back();
+                if (!line.empty() && line.back() == '\r') line.pop_back();
+                if (!Utils::compareLow(line, "yes")) return;
+            }
+            Utils::writeImage(state.disk.path.c_str(), state.disk.size, {});
         }
         break;
     case InsType::Exit:

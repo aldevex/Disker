@@ -1,17 +1,15 @@
 Codebase explanation (src/):
 
 Entry files (entry/):
-"entry/entry_utf8.cpp": Entry on linux and other UTF-8 native systems.
-"entry/entry_win.cpp": Entry on windows.
-"entry_gui.cpp": Entry on cross-platform GUI library.
+"utf8.cpp": Entry for TUI on linux and other UTF-8 native systems.
+"win.cpp": Entry for TUI on windows.
 
 Core files (core/):
-"main_tui.hpp": TUI core code. Included by "entry/entry_win.cpp" or "entry/entry_utf8.cpp".
-"main_gui.hpp": GUI core code. Included by "entry_gui.cpp".
+"main_tui.hpp": TUI core code. Included by "entry/win.cpp" or "entry/utf8.cpp".
 "state.hpp": Program instructions state. Included by "main_tui.hpp" or "main_gui.hpp".
+"inss.hpp": Type definitions for Disker instructions applied by "state.hpp".
 
-Generic code files (algos/):
-"inss.hpp": Code for Disker instructions applied by "state.hpp".
+Utility code files (utils/):
 "utils.hpp": Generic utility functions.
 "ssutils.hpp": Declarations for system-specific utility functions (same namespace as "utils.hpp").
 "ssutils_linux.cpp": Linux implementation of "ssutils.hpp".

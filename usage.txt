@@ -21,27 +21,27 @@ binary
 
 # Opening virtual disk image file
 openvd x.img size 32gib sectsize 4096
-# OR "openvd x.img size 32gib sectsize 4096"
 # Use "openphd" to open a physical disk
 
 
 
 # Setting partition system
-format gpt parts 3
-# Also available: format mbr & format biosgpt
+scheme gpt parts 3
+# Also available: scheme mbr
 
 # Editing partitions
 # can use \ for continuing on new line (in files only)
 # spc = sectors per cluster
 # 524,288 4096-byte sectors = 2 GiB
-part 1 fs FAT32  size 16gib \
-                    spc 8
+part 1 fs FAT32  guid ESP \
+                    size 16gib spc 8
 part 2 fs FAT32  sects 524,288  label "OS Partition" ^
                     type bdp  guid "EE-E-EE-E-EEEEE"  align 1M
 part 3 fs FAT32  clusts 524,288  spc 1
 
 # Setting MBR bootloader code
 boot mbr boot_mbr.bin
+# also available: mbr+ (mbr and after) and postmbr (only after mbr)
 
 # Setting partition bootloader code
 openpart 1
@@ -82,6 +82,8 @@ cp README.md EFI/README.md
 whats boot
 whats parts
 whats open
+whats sys # To get info on all system disks
+whats "disk image or disk path" # To get info on a specific disk
 
 # Save disk or disk image
 save

@@ -2,11 +2,9 @@
 #include <shellapi.h> // shell32.lib linking required
 #include <clocale>
 #include <iostream>
-#include <string>
 #include <vector>
-#include <utility>
-#include "../algos/utils.hpp"
-#include "../algos/ssutils.hpp"
+#include "../utils/utils.hpp"
+#include "../utils/ssutils.hpp"
 #include "../core/main_tui.hpp"
 
 int main()
@@ -14,7 +12,7 @@ int main()
     // Set console to UTF-8
     SetConsoleOutputCP(CP_UTF8);
     SetConsoleCP(CP_UTF8);
-    std::setlocale(LC_ALL, ".UTF-8");
+    setlocale(LC_ALL, ".UTF-8");
 
     // Get WinAPI UTF-16 args
     int argC = 0;
