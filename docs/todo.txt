@@ -1,0 +1,72 @@
+
+Current focus:
+- raw_dataMakeNull() and raw_dataMake() are static inline
+    because two C files include geo.h which includes the aforementioned functions
+    so, make a bunch of C files or inline everything?...
+- Apply edits rather than full recreation if a disk/image already exists:
+    save commandline instruction stream vector until you hit a save
+    THEN loop over instructions and applyIns
+    and overwrite the disk image file directly without saving a copy
+- Implement openLockReadImage and closeImage,
+    make the open function set disk info like alignment and stuff
+    from given instruction
+- Image expansion and careful minimization on openvd changed size save
+- Early path validation
+- Clean error printing pipeline (functions called by applyIns print, not applyIns itself)
+- Make applyIns caller stop file applying loop on error
+- Obey allyes, ignore it on real disk writing
+
+Misc:
+- Add ability to specify sparse file or not on openvd (for both creation and already existing images)
+- Check size overflows, alignment, and sector counts
+- Add total UTF-8 and UTF-16 validation logic in _stringUTF8to16 and _stringUTF16to8
+- Add unit testing to core/ or entry/
+- Make sizeToStr utility function to reverse strToSize for printing
+- Check invalid disk/sector sizes (that don't work with sector count or alignment)
+    just give a warning, or error
+- Fix GPT and FAT32 code
+- Add getBackupHeader method in gpt header class
+- Test and fix argument parsing for terminal line and files
+- Add path validation to normal file R/W functions
+- Make PartitionInfo struct work well for both MBR and GPT formats
+- copy() methods for GPT structures, to copy directly from sectors and validate crc32 and general data
+- Add MBR and GPT partition methods to get PartitionInfo struct
+- Add fs structures (VBR, FSInfo, and FAT)
+- Make getPathType() check volume paths
+- Add function to convert volume path/name/letter to disk path
+- Add functions to get all volumes and partitions from disk path
+- Add windows getDiskInfo, and disk IO (with a bunch of safety measures)
+- Add more instructions
+- Add warning on exit without save
+    & on attempting to edit real disks (especially when theyre partitioned and/or have files)
+- Add way to save commands from commandline into a file for reuse
+    (remove unnecessary instructions whose subjects get overwritten after)
+- Add saving variables into Disker for quick and easy reuse
+- Add version printing
+- Add code documents, code comments, help string (both direct argument or instruction), usage.txt
+
+Delayed "mem/" chaneges:
+- Check memory leaks
+- Remove "make" constructors especially from memory-manager structures
+- Use constructors that create an empty object (so string works for printf)
+- Add reverse isspace checks for UTF-8 and replace isspace with them in main_tui.h
+- Add UTF-16 string copies to reduce conversions
+- Make string to substr return a view instead of a new string
+- Add string methods for direct copying and setting size without staging buffers
+- Add getLine methods for view that returns view segment
+    and progresses source view pointer
+- Make NT and PS constructors check NULL
+- Optimize mem/ memory dynamic array and string and view operations
+    and add PS core functions with NT subsets for generic non-object operations
+- Add functions and/or macros for easy darray and string creation
+    from a collection of values without passing size to make parseIns code beautiful
+
+Major/delayed codebase changes:
+- Add Linux support
+- Make code work on big endian environments too
+    (almost all disk structures (partitions/file systems) are little endian by themselves
+    so youll need struct getters or swapping on RW)
+- Add support for more image file formats and file systems
+    don't make .iso files sparse because they're supposed to be filled anyway
+- Add GUI
+- Add file recovery tooling
