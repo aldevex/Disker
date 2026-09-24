@@ -1,0 +1,68 @@
+
+# Enable auto-confirmation and binary units (GB = GiB, etc.)
+autoyes # Opposite "manyes"
+binary # Opposite "decimal"
+
+# Select disk to operate on (via path or symbol pointing to a partition or disk or image file)
+select D
+# Program would do:
+# WARNING AAAAAAA OH MY GOOOD AAAAAAAAA YOU SELECTED A REAL DISK AA
+# Asks for admin/sudo if not admin (coding this will be difficult)
+# Prints info about the disk containing "D:/" partition 🤑
+
+# You can select a specific shceme to operate on if you need a hybrid scheme layout for some reason:
+# select scheme gpt/mbr
+
+# Set disk layout
+disk size 40GiB sectsize 4096B align 1MiB \
+    scheme GPT parts 4 sparse f
+reserve size 8GiB # Reserve sectors at the start of disk
+part 1  spc 1  size 8GiB         fs FAT32  guid ESP
+part 2  spc 2  size 8GiB         fs exfat  guid "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"
+part 4  spc 2  clusts 1,048,576  fs FAT32  label "OS Partition"
+part 3  sects 2,097,152          fs FAT32  typeguid bdp
+
+# Set MBR bootloader code
+boot mbr boot_mbr.bin
+# Also available: mbr+ (binary copied into mbr and after) and postmbr (only after mbr)
+
+# Select partition to operate on
+select part 1
+
+# Set VBR and EFI bootloader for selected partition
+boot vbr boot_vbr.bin
+boot uefi_default boot_uefi.EFI
+copy out "boot_uefi.EFI" "EFI\ShitOS\boot\boot_x64.EFI" # Copy from outside (OS FS) to inside (disk FS)
+
+# All file stuff is available:
+# cd: Change directory if given an argument, prints current directory otherwise
+# list: List directory contents or print file content
+# tree: List directory contents, including nested ones
+# find: Search for a file or directory by name or path segment
+# create: Creates a file or directory
+# delete: Deletes a file or directory
+# copy: Copies a file or a directory with its contents
+# move: Moves a file or a directory with its contents
+# rename: Renamed a file or directory
+# attribs: Get file system attributes for a file or directory
+
+# Get info about selected subjects
+info boot # List info on each bootloader
+info part # List selected partition info
+info part <n> # List specified partition info
+info disk # List selected disk info
+info disk <path/symbol> # List specified disk info
+info sys # Lists all system disks
+
+# Only on save does Disker overwrite the selected disk with the given commands
+save
+# After parsing "save" it asks for confirmation
+
+# Close the selected disk
+close
+
+# Exit Disker
+quit # Can use "stop" or "exit" or "quit"
+
+# Program warns on exit, close, or selecting disk with unsaved commands
+# "undo" and "redo" are available only for terminal line-by-line input

@@ -1,3 +1,7 @@
+****************KINDA OUTDATED****************
+
+
+
 Codebase explanation (src/):
 
 Memory (mem/):
@@ -10,9 +14,8 @@ Entry (entry/):
 "app.c": Entry for TUI.
 
 Core (core/):
-"main_tui.h": TUI instruction parsing code. Contains core main function "tuiMain".
-"instructions.h": Disker instruction structures.
-"state.h": Program instructions state. Included by "main_tui.h".
+"main_tui.h": TUI command parsing code. Contains core main function "tuiMain".
+"commands.h": Disker command structures and command applying code.
 "ssimp_linux.c": Linux implementation of system-specific functions.
 "ssimp_win.c": Windows implementation of system-specific functions.
 

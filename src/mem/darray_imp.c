@@ -160,19 +160,13 @@ void _darrayErase(_darrayBytes* pDarray, size_t startI, size_t count, size_t ite
                         __func__);
         exit(EXIT_FAILURE);
     }
-    else if (startI >= pDarray->_itemsCount)
+    else if (startI +count > pDarray->_itemsCount)
     {
-        fprintf(stderr, "startI = %zu >= pDarray->_itemsCount given to %s for darray %p\n",
-                        startI, __func__, pDarray);
-        exit(EXIT_FAILURE);
-    }
-    else if (count > pDarray->_itemsCount -startI)
-    {
-        fprintf(stderr, "count = %zu > (pDarray->_itemsCount -startI) given to %s for darray %p\n",
+        fprintf(stderr, "(startI +count) = %zu > pDarray->_itemsCount given to %s for darray %p\n",
                         count, __func__, pDarray);
         exit(EXIT_FAILURE);
     }
-
+    
     // Move back the front side of the buffer to erase whats before it
     size_t shiftedCount = pDarray->_itemsCount -(startI +count);
     memmove(pDarray->_pBytes +(startI *itemSize), 

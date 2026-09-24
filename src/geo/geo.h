@@ -3,6 +3,7 @@
 
 typedef enum geo_Type
 {
+    GEO_TYPE_NONE,
     GEO_TYPE_RAW_DISK, GEO_TYPE_RAW_IMAGE,
     //VHD, VDI, ...
 } geo_Type;

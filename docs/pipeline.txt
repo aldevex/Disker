@@ -1,18 +1,4 @@
-Program pipeline explanation:
-
-- Opening a disk or disk image:
-    If opened image file (or disk) exists:
-        - Open and lock the image file
-        - Read into original disk info value
-        - Print disk info
-        - Read changes into new disk info value
-    If not:
-        - Open and lock the new image file
-        - Null/ignore original disk info value
-        - Read changes into new disk info value
-- Saving:
-    Print changes (even if the file is new) and ask for confirmation,
-    make it a heavier warning if overwriting original image, or disk is real
-
-- Ignore "allyes" instruction on writing to real disks
-- Apply edits rather than full recreation if a disk/image already exists
+TUI program pipeline explanation:
+- parseCmd validates input syntax and grammar and a basic value validation
+- getRunCmds validates commands relative to state and applies them to the state
+- applyCmd runs commands on the disk blindly

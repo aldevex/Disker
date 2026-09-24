@@ -1,7 +1,6 @@
 #include <locale.h>
 #include <stdio.h>
 #include "../mem/mem.h"
-#include "../utils/generic.h"
 #include "../core/main_tui.h"
 #ifdef _WIN32
 #include <windows.h>
@@ -51,5 +50,15 @@ int main()
         dviewAppendV(&argViewBuffer, view8MakeCopyNT(argV[i]));
 #endif
 
-    return tuiMain(&argViewBuffer);
+    tuiMain(&argViewBuffer);
+
+#ifdef _WIN32
+    for (size_t i = 0; i < dstrSize(&argStringBuffer); i++)
+        string8Free(&at(&argStringBuffer, i));
+    dstrFree(&argStringBuffer);
+#endif
+
+    dviewFree(&argViewBuffer);
+
+    return EXIT_SUCCESS;
 }

@@ -64,8 +64,8 @@
         ._terminated = false\
     }
 
-// This macro doesn't implement trim, strlen, isspace, and encoding conversion functions,
-//   you should make them outside the macro
+// This macro doesn't implement encoding-specific functions,
+//   they're defined outside the macro
 
 #define STRING_DEF(stringName, stringPrefix, viewName, viewPrefix, darrayName, darrayPrefix,\
                     Type, funcGetNTCodePointCount)\
@@ -85,6 +85,12 @@ typedef struct viewName\
 } viewName;\
 \
 /* Creation and assignment */\
+static inline stringName stringPrefix##MakeEmpty()\
+{\
+    darrayName darray = {0};\
+    darrayPrefix##FillV(&darray, 1, (Type)(0));\
+    return _stringFromDarray(darray, stringName, Type);\
+}\
 static inline stringName stringPrefix##MakeFillV(size_t count, const Type vItem)\
 {\
     darrayName darray = {0};\
@@ -209,6 +215,9 @@ static inline void stringPrefix##AppendCU(stringName* pDstString, Type appendedC
 {\
     darrayName dstDarray = _stringToDarray(pDstString, darrayName, Type);\
     darrayPrefix##AppendV(&dstDarray, (Type)appendedCodeUnit);\
+    /* TEMPORARY FIX FOR NULL TERMINATION. YOU GOTTA CHECK THE ENTIRE HEADER*/\
+    darrayPrefix##AppendV(&dstDarray, (Type)(0));\
+    dstDarray._itemsCount--;\
     *pDstString = _stringFromDarray(dstDarray, stringName, Type);\
 }\
 static inline void stringPrefix##AppendS(stringName* pDstString, const stringName* pAppendedString)\
@@ -323,7 +332,9 @@ static inline bool stringPrefix##Empty(const stringName* pString)\
 }\
 static inline const Type* stringPrefix##NT(const stringName* pString)\
 {\
-    return pString->_pBuffer;\
+    static const Type emptyNT = (Type)0;\
+    if (pString->_pBuffer == NULL) return &emptyNT;\
+    else return pString->_pBuffer;\
 }\
 static inline stringName stringPrefix##SubStr(const stringName* pString, size_t startI, size_t count)\
 {\

@@ -1,116 +1,106 @@
 #include <stdint.h>
 #include <string.h>
-#include <locale.h>
 #include <stdio.h>
 #include <windows.h>
 #include <objbase.h> // YOU GOTTA LINK "ole32.dll"
-#include "../mem/mem.h"
 #include "../utils/generic.h"
 #include "../diskinfo.h"
 
 const utils_SysHandle UTILS_HANDLE_NONE = (utils_SysHandle)INVALID_HANDLE_VALUE;
 
-utils_ErrorState openLockReadImage(DiskInfo* pDiskInfo, String8* pPath,
-                                    bool* pCreatedNewFile)
+utils_ErrorState openLockReadDisk(DiskInfo* pDiskInfo, String8* pPath, bool* pCreatedNewFile)
 {
-    return UTILS_ERRORSTATE_FAILURE;
-    // Ensure that path isn't a real disk (return failure if real disk)
-    // if (utils_getPathType(&vwstr(pPath)) != UTILS_PATHTYPE_FILE
-    // && utils_getPathType(&vwstr(pPath)) != UTILS_PATHTYPE_NONE)
-    // {
-    //     fprintf(stderr, "invalid image file path \"%s\"", string8NT(pPath));
-    //     string8Free(pPath);
-    //     return UTILS_ERRORSTATE_FAILURE;
-    // }
+utils_ErrorState result = UTILS_ERRORSTATE_FAILURE;
+    //
+    //
+    // ALL OF THIS ASSUMES RAW IMAGE
+    //
+    //
 
-    // // Get UTF-16 path
-    // bool validText = false;
-    // String16 path16 = string16MakeCopyS8(pPath, &validText);
-    // if (!validText)
-    // {
-    //     string16Free(&path16);
-    //     fprintf(stderr, "failed to open invalid path \"%s\"", string8NT(pPath));
-    //     string8Free(pPath);
-    //     return UTILS_ERRORSTATE_FAILURE;
-    // }
+    // Get UTF-16 path
+    bool validText = false;
+    String16 path16 = string16MakeCopyS8(pPath, &validText);
+    if (!validText)
+    {
+        fprintf(stderr, "failed to open invalid path \"%s\"\n", string8NT(pPath));
+        fret(UTILS_ERRORSTATE_FAILURE);
+    }
 
-    // // Open existing file
-    // LARGE_INTEGER fileSize = {0};
-    // HANDLE hFile = CreateFileW(string16Data(&path16), GENERIC_READ|GENERIC_WRITE, 0, 
-    //                             NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-    // if (hFile != INVALID_HANDLE_VALUE)
-    // {
-    //     *pCreatedNewFile = false;
-    //     // Get file size
-    //     if (!GetFileSizeEx(hFile, &fileSize))
-    //     {
-    //         fprintf(stderr, "failed to get file size for \"%s\"", string8NT(pPath));
-    //         string8Free(pPath);
-    //         string16Free(&path16);
-    //         CloseHandle(hFile);
-    //         return UTILS_ERRORSTATE_FAILURE;
-    //     }
-    // }
-    // else
-    // {
-    //     // Create new file on failure
-    //     hFile = CreateFileW(string16Data(&path16), GENERIC_READ|GENERIC_WRITE, 0, 
-    //                             NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-    //     if (hFile != INVALID_HANDLE_VALUE)
-    //     {
-    //         *pCreatedNewFile = true;
-    //         // Try to make the file a sparse file if newly created
-    //         DeviceIoControl(hFile, FSCTL_SET_SPARSE, NULL, 0, NULL, 0, NULL, NULL);
-    //     }
-    //     else
-    //     {
-    //         fprintf(stderr, "failed to open and to create file \"%s\"", string8NT(pPath));
-    //         string8Free(pPath);
-    //         string16Free(&path16);
-    //         return UTILS_ERRORSTATE_FAILURE;
-    //     }
-    // }
+    // Open existing file
+    LARGE_INTEGER fileSize = {0};
+    HANDLE hFile = CreateFileW(string16Data(&path16), GENERIC_READ|GENERIC_WRITE, 0, 
+                                NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (hFile != INVALID_HANDLE_VALUE)
+    {
+        *pCreatedNewFile = false;
+        // Get file size
+        if (!GetFileSizeEx(hFile, &fileSize))
+        {
+            fprintf(stderr, "failed to get file size for \"%s\"\n", string8NT(pPath));
+            fret(UTILS_ERRORSTATE_FAILURE);
+        }
+    }
+    else
+    {
+        // Create new file on failure
+        hFile = CreateFileW(string16Data(&path16), GENERIC_READ|GENERIC_WRITE, 0, 
+                                NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (hFile != INVALID_HANDLE_VALUE)
+        {
+            *pCreatedNewFile = true;
+            // Try to make the file a sparse file if newly created
+            DeviceIoControl(hFile, FSCTL_SET_SPARSE, NULL, 0, NULL, 0, NULL, NULL);
+        }
+        else
+        {
+            fprintf(stderr, "failed to open and to create file \"%s\"\n", string8NT(pPath));
+            fret(UTILS_ERRORSTATE_FAILURE);
+        }
+    }
     
-    // // Read file into disk info
-    // if (!*pCreatedNewFile)
-    // {
-    //     char readBuffer[1024];
-    //     DWORD bytesRead = 0;
-    //     if (ReadFile(hFile, readBuffer, sizeof(readBuffer) - 1, &bytesRead, NULL))
-    //     {
-    //         readBuffer[bytesRead] = '\0';
-    //         printf("Current content: %s\n", readBuffer);
-    //     } else
-    //     {
-    //         fprintf(stderr, "Read failed. Error: %lu\n", GetLastError());
-    //         CloseHandle(hFile);
-    //         return;
-    //     }
-    // }
-    // // Set default values for newly created file
-    // else
-    // {
-    //     pDiskInfo. = ;
-    // }
-    // pDiskInfo->handle = (utils_SysHandle)hFile;
-    // pDiskInfo->path = *pPath;
-    // pDiskInfo->geometry.type = GEO_TYPE_RAW_IMAGE;
-    // pDiskInfo->geometry.data.raw.size = fileSize;
-    // pDiskInfo->geometry.data.raw.sectorSize = ???;
+    // Read file into disk info
+    if (!*pCreatedNewFile)
+    {
+        // char readBuffer[1024];
+        // DWORD bytesRead = 0;
+        // if (ReadFile(hFile, readBuffer, sizeof(readBuffer) - 1, &bytesRead, NULL))
+        // {
+        //     readBuffer[bytesRead] = '\0';
+        //     printf("Current content: %s\n", readBuffer);
+        // } else
+        // {
+        //     fprintf(stderr, "Read failed. Error: %lu\n", GetLastError());
+        //     CloseHandle(hFile);
+        //     return;
+        // }
+    }
+    // Set default values for newly created file
+    else
+    {
+        // pDiskInfo.
+    }
+    pDiskInfo->handle = (utils_SysHandle)hFile;
+    pDiskInfo->path = *pPath;
+    pDiskInfo->geometry.type = GEO_TYPE_RAW_IMAGE;
+    pDiskInfo->geometry.data.raw = raw_dataMake(fileSize.QuadPart, 512, 512,
+                                        utils_strToSizeVw(&vw("1MiB"), true, true, true));
+    pDiskInfo->scheme.type = SCHEME_TYPE_MBR;
 
-    // // Reset the file pointer to the beginning to RW later
-    // if (!SetFilePointer(hFile, 0, NULL, FILE_BEGIN))
-    // {
-    //     fprintf(stderr, "failed to reset file pointer for \"%s\"", string8NT(pPath));
-    //     string8Free(pPath);
-    //     string16Free(&path16);
-    //     CloseHandle(hFile);
-    //     return UTILS_ERRORSTATE_FAILURE;
-    // }
+    // Reset the file pointer to the beginning to RW later
+    if (SetFilePointer(hFile, 0, NULL, FILE_BEGIN) == INVALID_SET_FILE_POINTER)
+    {
+        fprintf(stderr, "failed to reset file pointer for \"%s\"\n", string8NT(pPath));
+        fret(UTILS_ERRORSTATE_FAILURE);
+    }
     
-    // string16Free(&path16);
-    // String8 pathCopy = *pPath;
-    // *pPath = (String8){0};
+    fret(UTILS_ERRORSTATE_SUCCESS);
+
+end:
+    if (string8Data(&pDiskInfo->path) == string8Data(pPath))
+        *pPath = (String8){0};
+    string16Free(&path16);
+    CloseHandle(hFile);
+    return result;
 }
 
 utils_ErrorState closeImage(DiskInfo* pDiskInfo)

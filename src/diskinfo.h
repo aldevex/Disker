@@ -15,11 +15,21 @@ typedef struct DiskInfo
     Dfs fileSystems;
 } DiskInfo;
 
+static inline DiskInfo diskInfoMakeDefault()
+{
+    return (DiskInfo){
+        .path = {0},
+        .handle = UTILS_HANDLE_NONE,
+        // .geometry = {0},
+        // .scheme = {0},
+        .fileSystems = {0}
+    };
+}
+
 // Takes ownership of string data into disk info and nulls out the object
-// Frees *pPath on failure
+// Doesn't take *pPath on failure
 // Also prints errors
-utils_ErrorState openLockReadImage(DiskInfo* pDiskInfo, String8* pPath, bool* pCreatedNewFile);
-//utils_ErrorState openLockReadDisk(DiskInfo* pDiskInfo, String8* pDiskSymbol);
+utils_ErrorState openLockReadDisk(DiskInfo* pDiskInfo, String8* pPath, bool* pCreatedNewFile);
 
 // typedef struct WriteImageInfo
 // {
@@ -30,9 +40,7 @@ utils_ErrorState openLockReadImage(DiskInfo* pDiskInfo, String8* pPath, bool* pC
 
 // DARRAY_DEF(Dwii, dwii, WriteImageInfo)
 
-// utils_ErrorState writeImage(DiskInfo* pDiskInfo, const WriteImageInfo* pWriteInfo);
 // utils_ErrorState writeDisk(DiskInfo* pDiskInfo, const WriteImageInfo* pWriteInfo);
 
 // Also prints errors
-utils_ErrorState closeImage(DiskInfo* pDiskInfo);
 //utils_ErrorState closeDisk(DiskInfo* pDiskInfo);

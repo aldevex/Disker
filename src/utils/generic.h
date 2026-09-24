@@ -1,4 +1,5 @@
 #pragma once
+#include <float.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -10,8 +11,14 @@
 typedef void* utils_SysHandle;
 extern const utils_SysHandle UTILS_HANDLE_NONE;
 
-// Prints help string and exits the program
-static inline void utils_helpExit()
+// Prints version string
+static inline void utils_version()
+{
+    printf("Disker (2026) version 0.1\n");
+}
+
+// Prints help string
+static inline void utils_help()
 {
     printf("%s",
         "Help string idfk what to put i will add later\n"
@@ -19,13 +26,12 @@ static inline void utils_helpExit()
         ""
         ""
     );
-    exit(EXIT_SUCCESS);
 }
 
-// Prints explanation on how to run help command
-static inline void utils_helpAboutHelp()
+// Prints explanation on how to get help command and exit disker
+static inline void utils_welcome()
 {
-    printf("exit and run \"Disker help\" for help"
+    printf("run \"Disker help\" or the Disker command \"help\" for help"
             " | type \"quit\" to exit Disker\n");
 }
 
@@ -34,14 +40,16 @@ static inline void utils_helpAboutHelp()
 // Returns true if equal
 static inline bool utils_compareLowVw(const View8* pAnyCaseAnyLenView, const View8* pLowerCaseRequiredView)
 {
+    if (view8Size(pAnyCaseAnyLenView) != view8Size(pLowerCaseRequiredView))
+        return false;
+
     String8 lowStr = {0};
     for (size_t i = 0; i < view8Size(pAnyCaseAnyLenView); i++)
     {
         if (at(pAnyCaseAnyLenView, i) > 127) string8AppendCU(&lowStr, at(pAnyCaseAnyLenView, i));
         else string8AppendCU(&lowStr, (UTF8_t)tolower(at(pAnyCaseAnyLenView, i)));
     }
-    bool result = (view8Size(pAnyCaseAnyLenView) == view8Size(pLowerCaseRequiredView))
-                    && string8StartsWithVw(&lowStr, pLowerCaseRequiredView);
+    bool result = string8StartsWithVw(&lowStr, pLowerCaseRequiredView);
     string8Free(&lowStr);
     return result;
 };
@@ -94,7 +102,7 @@ static inline uint64_t utils_strToSizeVw(const View8* pView, bool zeroIsUnaccept
 #define EXA_MULTIPLIER  (uint64_t)(1000ULL * PETA_MULTIPLIER) // 10^18
 uint64_t result = 0;
 
-    String8 copy; // String copy to ensure null terminator + remove commas
+    String8 copy = {0}; // String copy to ensure null terminator + remove commas
     // Ignore: commas, single quotes, and underscore off the number
     for (size_t i = 0; i < view8Size(pView); i++)
     {
@@ -383,4 +391,89 @@ static inline bool utils_msguidCmp(const utils_MSGUID* pA, const utils_MSGUID* p
         && (pA->data2 == pB->data2)
         && (pA->data3 == pB->data3)
         && (d4equal);
+}
+
+
+
+// Outputs raw terminal input line (excluding new line)
+// String is 100% managed by the function except freeing it
+static inline void utils_getTerminalLine(String8* pBuffer)
+{
+    // Clear previous buffer
+    string8Clear(pBuffer);
+    // Initial capacity 128 code units
+    if (string8Capacity(pBuffer) == 0) string8Reserve(pBuffer, 128);
+    while (true)
+    {
+        // Copy "capacity" max bytes directly into string
+        if (fgets(string8Data(pBuffer) +string8Size(pBuffer),
+                string8Capacity(pBuffer) -string8Size(pBuffer), stdin) != NULL
+        && strlen(string8Data(pBuffer) +string8Size(pBuffer)) != 0)
+        {
+            // Register new read segment size into total size
+            pBuffer->_itemsCount += strlen(string8Data(pBuffer) +string8Size(pBuffer));
+            // Line reading isn't finished, add more capacity (which equals read limit)
+            //   and continue
+            if (string8Data(pBuffer)[string8Size(pBuffer) -1] != '\n')
+                string8Reserve(pBuffer, string8Capacity(pBuffer) *2);
+            // Line reading finished
+            else
+            {
+                // Remove line feed and possible carriage return
+                pBuffer->_itemsCount--;
+                if (string8Size(pBuffer) > 0
+                && string8Data(pBuffer)[string8Size(pBuffer) -1] == '\r')
+                    pBuffer->_itemsCount--;
+                // Set null terminator
+                string8Data(pBuffer)[string8Size(pBuffer)] = '\0';
+                // Remove excess allocation if it's too much
+                if (string8Capacity(pBuffer) -string8Size(pBuffer) > 256)
+                    string8ShrinkToFit(pBuffer);
+                // Stop reading
+                break;
+            }
+        }
+        // Failure
+        else
+        {
+            string8Free(pBuffer);
+            fprintf(stderr, "\ninput stream has been interrupted\n");
+            exit(EXIT_FAILURE);
+        }
+    }
+}
+
+// Asks for yes/no input (doesn't print the question)
+// Returns true for yes
+static inline bool utils_confirmation()
+{
+    static const bool assumeNoForWeirdAnswers = true;
+    bool yesSavePlz = false;
+    String8 reply = {0};
+    while (true)
+    {
+        printf("(yes/no): ");
+        string8Clear(&reply);
+        utils_getTerminalLine(&reply);
+        string8Trim(&reply);
+        if (utils_compareLowNT(&vwstr(&reply), "yes"))
+        {
+            yesSavePlz = true;
+            break;
+        }
+        else if (utils_compareLowNT(&vwstr(&reply), "no"))
+        {
+            yesSavePlz = false;
+            break; 
+        }
+        else if (assumeNoForWeirdAnswers)
+        {
+            printf("invalid answer, assuming \"no\"\n");
+            yesSavePlz = false;
+            break; 
+        }
+        else continue;
+    }
+    string8Free(&reply);
+    return yesSavePlz;
 }

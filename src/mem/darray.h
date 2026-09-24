@@ -273,3 +273,4 @@ static inline Type fPrefix##Last(const structName* pDarray)\
 
 DARRAY_DEF(Dbyte, dbyte, byte_t)
 DARRAY_DEF(Dbool, dbool, bool)
+DARRAY_DEF(Dsize, dsize, size_t)
