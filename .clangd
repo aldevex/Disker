@@ -1,0 +1,14 @@
+If:
+    PathMatch: .*\.(c|h)
+
+InlayHints:
+    ParameterNames: false
+
+Diagnostics:
+    Suppress: ["unused-includes"]
+    ClangTidy:
+        Remove: ["readability-misleading-indentation"]
+
+CompileFlags:
+    Add: [-x, c, -std=c17, -Wno-microsoft-goto, -Wno-pragma-pack,
+        -Wno-missing-braces, -D_CRT_SECURE_NO_WARNINGS]

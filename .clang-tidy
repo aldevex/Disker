@@ -1,0 +1,2 @@
+yaml:.clang-tidy
+Checks: '-readability-misleading-indentation'
