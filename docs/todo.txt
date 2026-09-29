@@ -1,35 +1,19 @@
 
-Current:
-- Finish prototype command implementations in getRunCmds, parseCmd, and applyCmd
-    Use disk format enum instead of isReal bool
-
+Finish command pipeline remake:
+- Divide the core runner run() into functions
 - Implement openLockReadImage and closeImage,
     make the open function set disk info like alignment and stuff
     from given instruction or something
 - Total proper EDIT_DISK command implementation
     (Image expansion and careful minimization on changed size, etc.)
-
 - Add file and direct argument command parsing implementations
-- Update pipeline.txt and codebase.txt
-
-
-
-Delayed "mem/" changes:
-- Make a PS string core and fix darray and string code in general
-- Add total UTF-8 and UTF-16 validation logic in _stringUTF8to16 and _stringUTF16to8
-- Proper string null termination (including size and capacity)
-- Add reverse isSpace8 functions and replace isspace with them in main_tui.h
-- Make string to substr return a view instead of a new string
-- Make NT and PS constructors check NULL
-- Optimize mem/ memory dynamic array and string and view operations
-    and add PS core functions with NT subsets for generic non-object operations
-- Add functions and/or macros for easy darray and string creation
-    from a collection of values without passing size to make parseIns code beautiful
 
 
 
 Misc:
-- Add NONE to all enums and rename PATH_NONE usages to PATH_ANY_FILE
+- Divide "disk/" files into C implementations
+- Fix string capacity includes null terminator (string core functions)
+- Add NONE to all enums and rename PATH_NONE usages to PATH_CREATABLE_FILE
 - Add real disks and .VHD
 - Validate partition, fs, and scheme structures
 - Use hash maps instead of if statement chains
@@ -50,6 +34,7 @@ Misc:
 - Add getBackupHeader method in gpt header class
 - Add more instructions
 - Test and fix argument parsing for terminal line and files
+- Add total UTF-8 and UTF-16 validation logic in _stringUTF8to16 and _stringUTF16to8
 - Add path validation to normal file R/W functions
 - Make PartitionInfo struct work well for both MBR and GPT formats
 - copy() methods for GPT structures, to copy directly from sectors and validate crc32 and general data
@@ -71,12 +56,10 @@ Misc:
 
 
 Major/delayed codebase changes:
-- Add TUI "save" command and only overwrite disk with given commands after "save"
-- Check memory leaks
 - Add Linux support
 - Make code work on big endian environments too
     (almost all disk structures (partitions/file systems) are little endian by themselves
     so youll need struct getters or swapping on RW)
 - Add support for more image file formats and file systems
     don't make .iso files sparse because they're supposed to be filled anyway
-- Add GUI via GTK4 or QT
+- Add GUI

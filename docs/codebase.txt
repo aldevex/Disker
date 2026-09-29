@@ -1,41 +1,57 @@
-****************KINDA OUTDATED****************
-
-
-
 Codebase explanation (src/):
 
-Memory (mem/):
-"darray.h": Dynamic array code.
-"darray_imp.c": Dynamic array core implementation.
-"string.h": Dynamic string and string view code (DO NOT ATTEMPT TO READ THIS).
-"mem.h": Includes the aforementioned code + some helper macros.
+# Memory (mem/):
+    - "darray.h": Dynamic array code.
+    - "string.h": Dynamic string and string view code.
+    - "mem.h": Includes the aforementioned code + some helper macros.
+    - "core.h": Core memory operations.
+    - "core_imp.c": Implementation of core.
 
-Entry (entry/):
-"app.c": Entry for TUI.
+# System-specific implementations (ssimp/):
+"windows.c": Windows implementation.
 
-Core (core/):
-"main_tui.h": TUI command parsing code. Contains core main function "tuiMain".
-"commands.h": Disker command structures and command applying code.
-"ssimp_linux.c": Linux implementation of system-specific functions.
-"ssimp_win.c": Windows implementation of system-specific functions.
+# Utility (utils/):
+    - "utils.h": Includes all utility code.
+    - Other files are self explanatory, system-specific implementations in "ssimp/".
 
-Utility (utils/):
-"generic.h": Generic utility code.
-    Non-system-specific functions are inline for inclusion in multiple .c files.
-
-Disk or disk image file geometry (geo/):
-"geo.hpp": Includes file format enum & geometry variant structure.
-"raw.hpp": Code for raw disk images and real disks.
-
-Disk scheme & structures (scheme/):
-"scheme.hpp": Includes scheme enum & total scheme data structure.
-"mbr.hpp": MBR scheme structures.
-"gpt.hpp": GPT scheme structures.
-
+# Disk and disk image focused code (disk/):
+Disk or image file geometry (geo/):
+    - "geo.hpp": Includes file format enum & geometry variant structure.
+    - "raw.hpp": Code for raw disk images and real disks.
+Disk schemes (scheme/):
+    - "scheme.hpp": Includes scheme enum & total scheme data structure.
+    - "mbr.hpp": MBR scheme structures.
+    - "gpt.hpp": GPT scheme structures.
 File systems (fs/):
-"fs.hpp": Includes file system enum & file system variant structure.
-"fat32.hpp": FAT32 structures.
+    - "fs.hpp": Includes file system enum & file system variant structure.
+    - "fat32.hpp": FAT32 structures.
+Total disk info collection (info.h):
+    - Collection of all disk/image information
+    - Disk/image read/write code
 
-Total disk info collection (diskinfo.h):
-- Collection of all disk or disk image information
-- Disk and disk image read/write code
+# Core (core/):
+Operation commands (cmds/):
+    - "cmds.h": Command structures and function declarations.
+    - "write.c": Write-command writing implementation.
+TUI core (tui/):
+    - "entry.c": Entry point.
+    - "state.c": Core program state logic.
+    - "parse.c": Command parsing implementation.
+    - "tui.h": External declarations for state and parsing.
+
+
+
+Program pipeline explanation:
+
+# TUI pipeline:
+    - writeCmd runs write commands on the given disk/image blindly
+    - parseCmd validates input grammar and specified numeric and textual argument values
+    - getRunCmds extracts commands one by one
+        from direct arguments, a file, or the commandline,
+        then validates them relative to the current program state,
+        then either apply the current command to the state,
+        or save it for writing later on a "save" command,
+        or do both, depending on the command type.
+
+# GUI pipeline:
+    - writeCmd runs write commands on the given disk/image blindly

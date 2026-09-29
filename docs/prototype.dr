@@ -1,3 +1,4 @@
+# Disker commands prototype
 
 # Enable auto-confirmation and binary units (GB = GiB, etc.)
 autoyes # Opposite "manyes"
@@ -28,6 +29,9 @@ boot mbr boot_mbr.bin
 
 # Select partition to operate on
 select part 1
+
+# Can also edit selected partition by using "part" without a number:
+# part    spc 1  size 8GiB         fs FAT32  guid ESP
 
 # Set VBR and EFI bootloader for selected partition
 boot vbr boot_vbr.bin

@@ -1,7 +1,10 @@
 @echo off
+setlocal
 
-gcc -std=c17 -finput-charset=UTF-8 -fexec-charset=UTF-8 ^
--Wall -Werror -g ^
-src/mem/darray_imp.c src/entry/tui.c ^
-src/core/ssimp_win.c src/core/main_tui.c src/core/commands.c ^
--lole32
+cmake -B "build" -G "Ninja" -DCMAKE_C_COMPILER=clang
+cmake --build "build"
+del "Disker.exe"
+move "build\Disker.exe" "."
+rename "Disker.exe" "a.exe"
+
+endlocal
