@@ -1,4 +1,0 @@
-TUI program pipeline explanation:
-- parseCmd validates input syntax and grammar and a basic value validation
-- getRunCmds validates commands relative to state and applies them to the state
-- applyCmd runs commands on the disk blindly
