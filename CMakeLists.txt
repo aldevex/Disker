@@ -15,9 +15,13 @@ endif()
 set(UI_TYPE "tui" CACHE STRING "UI type (gui/tui)")
 set_property(CACHE UI_TYPE PROPERTY STRINGS "gui" "tui")
 
+add_executable(Disker)
 
 
-set(SOURCES
+
+target_include_directories(Disker PUBLIC "src/")
+
+target_sources(Disker PRIVATE
     # Memory
     "src/mem/core_imp.c"
     # Utils
@@ -32,23 +36,22 @@ set(SOURCES
     # Core: Commands
     "src/core/cmds/write.c"
 )
-
     # System-specific implementation
 if(PLATFORM STREQUAL "windows")
-    list(APPEND SOURCES "src/ssimp/windows.c")
+    target_sources(Disker PRIVATE "src/ssimp/windows.c" "src/res/windows.rc")
 else()
-    list(APPEND SOURCES "src/ssimp/linux.c")
+    target_sources(Disker PRIVATE "src/ssimp/linux.c")
 endif()
 
     # Core: UI-specific
 if(UI_TYPE STREQUAL "tui")
-    list(APPEND SOURCES
+    target_sources(Disker PRIVATE
         "src/core/tui/entry.c"
         "src/core/tui/parse.c"
         "src/core/tui/state.c"
     )
 elseif(UI_TYPE STREQUAL "gui")
-    list(APPEND SOURCES
+    target_sources(Disker PRIVATE
         "src/core/gui/entry.c"
         "src/core/gui/parse.c"
         "src/core/gui/state.c"
@@ -58,8 +61,6 @@ else()
 endif()
 
 
-
-add_executable(Disker ${SOURCES})
 
 target_compile_options(Disker PRIVATE
     -finput-charset=UTF-8
