@@ -29,9 +29,9 @@ typedef struct DiskInfo
 // If pCreatedNewFile == NULL or *pCreatedNewFile == false: won't create a new file on failure to open
 //   otherwise: sets *pCreatedNewFile to true or false if created a new file
 extern utils_ErrorState diskInfoOpenRead(String8* pPath, DiskInfo* pDiskInfo, bool* pCreatedNewFile);
-// Unlocks and closes disk/image and clears out the object data
+// Unlocks and closes disk/image and resets the object data to default
 // Also prints errors on failure
-extern utils_ErrorState diskInfoCloseClear(DiskInfo* pDiskInfo);
+extern utils_ErrorState diskInfoCloseReset(DiskInfo* pDiskInfo);
 // Writes object disk layout and fs updates to disk/image
 // Also prints errors on failure
 extern utils_ErrorState diskInfoWrite(DiskInfo* pDiskInfo);

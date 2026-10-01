@@ -210,7 +210,7 @@ static void _memStrInsertNull(_memGS* pGS, size_t itemSize, const void* pNull)
 {
     // Set null terminator if capacity allows
     if (pGS->_itemsCapacity > pGS->_itemsCount)
-        memcpy(&pGS->_pBytes[pGS->_itemsCount], pNull, itemSize);
+        memcpy(&pGS->_pBytes[pGS->_itemsCount *itemSize], pNull, itemSize);
     // Reallocate and set null terminator
     else
     {

@@ -1,10 +1,13 @@
 
-Current goal:
-- Make the pipeline properly open and edit raw image files
-
-
+Current goals:
+- Add error limit (add progState.errorCount++; everywhere)
+- Return EXIT_FAILURE on user-error failures
+- Save command string in Cmd struct for error printing outside parseCmd()
+- Add undo/redo stack
+- Add edit raw image files command
 
 Delayed:
+- Add opsec mode easter egg
 - Pull out all ssimp into C files
 - Add endsWith method to string and view
 - Add getBackupHeader method in gpt header class

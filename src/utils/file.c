@@ -114,7 +114,7 @@ uint64_t utils_getFileSize(const View8* pPath)
     if (!GetFileAttributesExW((WCHAR*)string16NT(&path16), GetFileExInfoStandard, &fileData))
     {
         string16Free(&path16);
-        fprintf(stderr, "failed to get file size for %s\n", view8NT(pPath));
+        fprintf(stderr, "failed to get file size for \"%s\"\n", view8NT(pPath));
         return UTILS_SIZESIG_NO_NUMBER;
     }
 
@@ -156,7 +156,7 @@ utils_SysHandle result = UTILS_SYSHANDLE_NONE;
         // Can create a new file (pCreatedNewFile isn't NULL/false)
         else
         {
-            hFile = CreateFileW(string16Data(&path16), GENERIC_READ|GENERIC_WRITE, 0, 
+            hFile = CreateFileW(string16NT(&path16), GENERIC_READ|GENERIC_WRITE, 0, 
                                     NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
             if (hFile == INVALID_HANDLE_VALUE)
             {

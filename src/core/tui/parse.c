@@ -241,8 +241,9 @@ utils_ErrorState result = UTILS_ERRORSTATE_FAILURE;
             {
                 string8AppendNT(&errMsg, " and ");
                 string8AppendVw(&errMsg, &currentDeclInfo.valInfos[1].nameLowercase);
+                string8AppendNT(&errMsg, " values");
             }
-            string8AppendNT(&errMsg, " values");
+            else string8AppendNT(&errMsg, " value");
 
             // Declarator not printed if it's just the main command name
             printInvalidCmdErrorSh(&vwstr(&errMsg),
@@ -420,9 +421,9 @@ utils_ErrorState parseCmd(const View8* pCmdView, const Dview* pSegments,
     }
 
     // Set yes
-    else if (utils_compareLowNT(&at(pSegments, 0), "allyes"))
+    else if (utils_compareLowNT(&at(pSegments, 0), "autoyes"))
     {
-        dadinfoAppendV(&declInfos, adinfoMake("allyes", true, NULL, 0));
+        dadinfoAppendV(&declInfos, adinfoMake("autoyes", true, NULL, 0));
 
         if (validatePrintExtractVals(pSegments, &declInfos, &sharedInfo)
             != UTILS_ERRORSTATE_SUCCESS) error = true;
@@ -523,6 +524,17 @@ utils_ErrorState parseCmd(const View8* pCmdView, const Dview* pSegments,
             resultCmd = cmdMake(CMDTYPE_SAVE, (CmdInfo){0});
     }
 
+    // Close
+    else if (utils_compareLowNT(&at(pSegments, 0), "close"))
+    {
+        dadinfoAppendV(&declInfos, adinfoMake("close", true, NULL, 0));
+
+        if (validatePrintExtractVals(pSegments, &declInfos, &sharedInfo)
+            != UTILS_ERRORSTATE_SUCCESS) error = true;
+        else
+            resultCmd = cmdMake(CMDTYPE_CLOSE, (CmdInfo){0});
+    }
+
     // Stop, exit, quit
     else if (utils_compareLowNT(&at(pSegments, 0), "stop")
             || utils_compareLowNT(&at(pSegments, 0), "exit")
@@ -598,10 +610,18 @@ utils_ErrorState parseCmd(const View8* pCmdView, const Dview* pSegments,
     // }
 
     // Easter eggs
-    else if (dviewSize(pSegments) == 1
-    && utils_compareLowNT(&at(pSegments, 0), u8"Помоћ"))
+    else if (dviewSize(pSegments) == 2
+    && utils_compareLowNT(&at(pSegments, 0), u8"Помози")
+    && utils_compareLowNT(&at(pSegments, 1), u8"ми"))
     {
-        printf("Не причам српски 😔\n");
+        printf(u8"Не причам српски 😔\n");
+        internalSkip = true;
+    }
+    else if (dviewSize(pSegments) == 2
+    && utils_compareLowNT(&at(pSegments, 0), u8"Βοηθήστε")
+    && utils_compareLowNT(&at(pSegments, 1), u8"με"))
+    {
+        printf(u8"Δεν μιλάω Ελληνικά 😔\n");
         internalSkip = true;
     }
     else if (dviewSize(pSegments) == 2

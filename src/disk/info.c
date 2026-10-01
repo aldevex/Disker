@@ -12,7 +12,7 @@ utils_ErrorState diskInfoOpenRead(String8* pPath, DiskInfo* pDiskInfo, bool* pCr
     if (pDiskInfo->handle != UTILS_SYSHANDLE_NONE)
     {
         fprintf(stderr, "written disk info object given to %s (path = %s)\n",
-                        __func__, string8NT(&pDiskInfo->path));
+                        __func__, string8NT(pPath));
         exit(EXIT_FAILURE);
     }
     // Open and lock disk/image
@@ -41,13 +41,13 @@ utils_ErrorState diskInfoOpenRead(String8* pPath, DiskInfo* pDiskInfo, bool* pCr
     return UTILS_ERRORSTATE_SUCCESS;
 }
 
-utils_ErrorState diskInfoCloseClear(DiskInfo* pDiskInfo)
+utils_ErrorState diskInfoCloseReset(DiskInfo* pDiskInfo)
 {
     // Close disk/image
     utils_ErrorState es = utils_closeFile(&vwstr(&pDiskInfo->path), &pDiskInfo->handle);
     if (es != UTILS_ERRORSTATE_SUCCESS) return UTILS_ERRORSTATE_FAILURE;
     // Clear object
-    *pDiskInfo = (DiskInfo){0};
+    *pDiskInfo = DISKINFO_DEFAULT;
     // Return success
     return UTILS_ERRORSTATE_SUCCESS;
 }

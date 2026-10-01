@@ -8,12 +8,13 @@
 
 typedef struct ProgState
 {
-    bool allYes;
+    bool autoyes;
     bool alwaysBinaryUnits;
     DiskInfo diskInfo;
     scheme_Type selectedScheme;
     uint64_t selectedPartNum;
     Dcmd commands; // Collection of commands to write to disk/image directly after "save"
+    size_t errorCount;
 } ProgState;
 
 static void getRunCmds(SrcState* pSrcState);
@@ -294,7 +295,7 @@ static bool getCmdText(SrcState* pSrcState, String8* pBuffer, Dview* pSegmentVie
 static void cmdSave(ProgState* pState, const SrcState* pSrcState)
 {
     bool yesSavePlz = false;
-    if (pState->allYes && pState->diskInfo.geometry.type != GEO_TYPE_RAW_DISK)
+    if (pState->autoyes && pState->diskInfo.geometry.type != GEO_TYPE_RAW_DISK)
         yesSavePlz = true;
     else
     {
@@ -327,22 +328,39 @@ static void cmdSave(ProgState* pState, const SrcState* pSrcState)
     }
 }
 
+static void cmdClose(ProgState* pState)
+{
+    if (!pState->autoyes
+    && pState->diskInfo.handle != UTILS_SYSHANDLE_NONE
+    && !dcmdEmpty(&pState->commands))
+    {
+        printf("warning: you have unsaved changes,"
+            " are you sure you want to close the selected disk?\n");
+        if (!utils_confirmation()) return;
+    }
+    dcmdClear(&pState->commands);
+    diskInfoCloseReset(&pState->diskInfo);
+    pState->selectedScheme = SCHEME_TYPE_NULL;
+    pState->selectedPartNum = 0;
+}
+
 // Returns true on exit confirmation
 static bool cmdExit(ProgState* pState)
 {
-    if (pState->diskInfo.handle != UTILS_SYSHANDLE_NONE
+    if (!pState->autoyes
+    && pState->diskInfo.handle != UTILS_SYSHANDLE_NONE
     && !dcmdEmpty(&pState->commands))
     {
         printf("warning: you have unsaved changes,"
             " are you sure you want to exit the program?\n");
         return utils_confirmation();
     }
-    else return false;
+    else return true;
 }
 
 static void cmdSelectDisk(ProgState* pState, CmdInfo* pInfo)
 {
-    if (!pState->allYes || pInfo->selectDisk.type == GEO_TYPE_RAW_DISK)
+    if (!pState->autoyes || pInfo->selectDisk.type == GEO_TYPE_RAW_DISK)
     {
         printf("Are you sure you want to select the disk \"%s\"?\n",
                 view8NT(&pInfo->selectDisk.path));
@@ -385,17 +403,21 @@ static void cmdEditDisk(ProgState* pState, const CmdInfo* pInfo)
 static void getRunCmds(SrcState* pSrcState)
 {
     ProgState progState = {
-        .allYes = false,
+        .autoyes = false,
         .alwaysBinaryUnits = true,
         .diskInfo = DISKINFO_DEFAULT,
         .selectedScheme = 0,
         .selectedPartNum = 0,
         .commands = {0},
+        .errorCount = 0
     };
     String8 cmdString = {0};
     Dview cmdSegments = {0};
     while (true)
     {
+        // 16 errors max from file or direct args
+        // if (pSrcState->srcType != SRCTYPE_TERMINAL_LINES && progState.errorCount > 16)
+        //     fretvoid;
         if (!getCmdText(pSrcState, &cmdString, &cmdSegments))
             fretvoid;
         Cmd cmd = {0};
@@ -405,7 +427,11 @@ static void getRunCmds(SrcState* pSrcState)
             &cmd
         );
         // Don't add on error
-        if (errorState != UTILS_ERRORSTATE_SUCCESS) continue;
+        if (errorState != UTILS_ERRORSTATE_SUCCESS)
+        {
+            // progState.errorCount++;
+            continue;
+        }
         switch (cmd.type)
         {
         // Ignore null
@@ -413,13 +439,16 @@ static void getRunCmds(SrcState* pSrcState)
             /**/
             break;
         case CMDTYPE_SET_YES:
-            progState.allYes = cmd.info.switchValue;
+            progState.autoyes = cmd.info.switchValue;
             break;
         case CMDTYPE_SET_BINARY:
             progState.alwaysBinaryUnits = cmd.info.switchValue;
             break;
         case CMDTYPE_SAVE:
             cmdSave(&progState, pSrcState);
+            break;
+        case CMDTYPE_CLOSE:
+            cmdClose(&progState);
             break;
         case CMDTYPE_EXIT:
             if (cmdExit(&progState)) fretvoid;

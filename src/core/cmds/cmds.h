@@ -18,7 +18,7 @@ typedef enum CmdType
     CMDTYPE_SET_BINARY,
     
     CMDTYPE_SAVE,
-    // CMDTYPE_CLOSE,
+    CMDTYPE_CLOSE,
     CMDTYPE_EXIT,
 
     // CMDTYPE_UNDO,
@@ -33,12 +33,12 @@ typedef enum CmdType
 
     CMDTYPE_SELECT_DISK,
 
-    // Disk-operating command types (affect program state and/or reach to writeCmd after "save" command):
+    // Disk-operating command types (affect program state AND reach to writeCmd after "save" command):
 
     // CMDTYPE_SELECT_SCHEME,
     // CMDTYPE_SELECT_PART,
 
-    CMDTYPE_EDIT_DISK,
+    CMDTYPE_EDIT_DISK, // CMDTYPE_EDIT_DISK is unimplemented btw ********************************
     // CMDTYPE_EDIT_RESERVE,
     // CMDTYPE_EDIT_PART,
     // CMDTYPE_EDIT_BOOT,
