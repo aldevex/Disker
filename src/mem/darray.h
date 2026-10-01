@@ -35,6 +35,19 @@ static inline _mem_FUNC_ATTRIB void fPrefix##CopyPS(structName* pDarray, const T
 {\
     _memCopy(&pDarray->_generic, pItems, sizeof(Type), itemCount);\
 }\
+static inline _mem_FUNC_ATTRIB void fPrefix##AdoptPS(structName* pDarray, Type** pPtrItems, size_t itemCount)\
+{\
+    if (pPtrItems == NULL)\
+    {\
+        fprintf(stderr, "pPtrItems = NULL given to %s for Darray %p\n",\
+                        __func__, pDarray);\
+        exit(EXIT_FAILURE);\
+    }\
+    pDarray->_pBuffer = *pPtrItems;\
+    pDarray->_capacity = itemCount;\
+    pDarray->_count = itemCount;\
+    *pPtrItems = NULL;\
+}\
 static inline _mem_FUNC_ATTRIB void fPrefix##Free(structName* pDarray)\
 {\
     _memRealloc(&pDarray->_generic, 0, sizeof(Type));\

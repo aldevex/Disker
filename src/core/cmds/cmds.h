@@ -10,21 +10,13 @@
 
 typedef enum CmdType
 {
-    // Parse/creation-level types (must not reach to applyCmd):
+    // Parse/creation command types (must not reach to writeCmd):
 
-    CMDTYPE_NONE,
+    CMDTYPE_NULL,
 
     CMDTYPE_SET_YES,
     CMDTYPE_SET_BINARY,
-
-    // "select scheme" & "select disk" both will affect applyCmd indirectly
-    //   by sending disk info, selected scheme type, and partition number
-    //   to the applyCmd calls while parsing/creating commands
-
-    CMDTYPE_SELECT_DISK,
-    // CMDTYPE_SELECT_SCHEME,
-    // CMDTYPE_SELECT_PART,
-
+    
     CMDTYPE_SAVE,
     // CMDTYPE_CLOSE,
     CMDTYPE_EXIT,
@@ -33,13 +25,18 @@ typedef enum CmdType
     // CMDTYPE_REDO,
 
     CMDTYPE_HELP,
+    CMDTYPE_VERSION,
     // CMDTYPE_LIST_BOOT,
     // CMDTYPE_LIST_PART,
     // CMDTYPE_LIST_DISK,
     // CMDTYPE_LIST_SYS,
 
+    CMDTYPE_SELECT_DISK,
 
-    // Apply-level types (reach to applyCmds in order and get applied there):
+    // Disk-operating command types (affect program state and/or reach to writeCmd after "save" command):
+
+    // CMDTYPE_SELECT_SCHEME,
+    // CMDTYPE_SELECT_PART,
 
     CMDTYPE_EDIT_DISK,
     // CMDTYPE_EDIT_RESERVE,
@@ -122,7 +119,7 @@ typedef struct WriteCmdInfo
     Cmd* pCmd;
     DiskInfo* pDiskInfo;
     scheme_Type selectedScheme;
-    uint64_t partNum;
+    uint64_t selectedPartNum;
 } WriteCmdInfo;
 
 extern utils_ErrorState writeCmd(WriteCmdInfo* pInfo);

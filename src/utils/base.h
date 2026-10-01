@@ -1,6 +1,8 @@
 #pragma once
 #include <stdint.h>
+#include <stddef.h>
 #include <stdbool.h>
+#include <stdlib.h>
 #include "../mem/mem.h"
 
 // Instead of a random "true" that could mean either success or failure
@@ -11,4 +13,4 @@ typedef enum utils_ErrorState
 } utils_ErrorState;
 
 typedef void* utils_SysHandle;
-extern const utils_SysHandle UTILS_HANDLE_NONE;
+extern const utils_SysHandle UTILS_SYSHANDLE_NONE;

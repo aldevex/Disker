@@ -21,7 +21,7 @@ int main()
     if (argVW == NULL)
     {
         fprintf(stderr, "couldn't get UTF-16 arguments\n");
-        return EXIT_FAILURE;
+        exit(EXIT_FAILURE);
     }
     // Convert to UTF-8
     Dstr argStringBuffer = {0};
@@ -32,6 +32,9 @@ int main()
         if (!valid)
         {
             fprintf(stderr, "invalid Unicode character in arguments\n");
+            string8Free(&result);
+            dstrFree(&argStringBuffer);
+            LocalFree(argVW);
             return EXIT_FAILURE;
         }
         dstrAppendV(&argStringBuffer, result);
@@ -50,7 +53,7 @@ int main()
         dviewAppendV(&argViewBuffer, view8MakeCopyNT(argV[i]));
 #endif
 
-    getRunCmds(&argViewBuffer);
+    core(&argViewBuffer);
 
 #ifdef _WIN32
     for (size_t i = 0; i < dstrSize(&argStringBuffer); i++)

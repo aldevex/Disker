@@ -5,55 +5,37 @@
 #include "../cmds/cmds.h"
 #include "./tui.h"
 
-// For quickly passing these 2 args to functions called by parseCmd
+// Forward declaration for quick jump in IDEs ✅🤫
+
+utils_ErrorState parseCmd(const View8* pCmdView, const Dview* pSegments,
+                            bool alwaysBinaryUnits, SrcType srcType, Cmd* pResultCmd);
+
+
+
+// For quickly passing these 3 args to functions called by parseCmd
 typedef struct SharedInfo
 {
     const View8* pCmdView;
-    ParseType parseType;
+    SrcType srcType;
     bool alwaysBinaryUnits;
 } SharedInfo;
-SharedInfo sharedinfoMake(const View8* pCmdView, ParseType parseType, bool alwaysBinaryUnits)
+SharedInfo sharedinfoMake(const View8* pCmdView, SrcType srcType, bool alwaysBinaryUnits)
 {
     return (SharedInfo){
         .pCmdView = pCmdView,
-        .parseType = parseType,
+        .srcType = srcType,
         .alwaysBinaryUnits = alwaysBinaryUnits
     };
 }
 
-// If parse type is PARSETYPE_TERMINAL_LINES, prints: invalid command ($reason "$optionalSpecifiedText")
+// printInvalidCmdError() but takes shared info struct 🤯
+// If parse type is SRCTYPE_TERMINAL_LINES, prints: invalid command ($reason "$optionalSpecifiedText")
 //   otherwise prints: invalid command "$cmdView" ($reason "$optionalSpecifiedText")
-void printInvalidCmdError(const View8* pReasonView, const View8* pSpecifiedTextView_optional,
+void printInvalidCmdErrorSh(const View8* pReasonView, const View8* pSpecifiedTextView_optional,
                             const SharedInfo* pSharedInfo)
 {
-    const View8* pCmdView = pSharedInfo->pCmdView;
-    if (pSharedInfo->parseType != PARSETYPE_TERMINAL_LINES)
-    {
-        if (view8Empty(pSpecifiedTextView_optional))
-        {
-            fprintf(stderr, "invalid command \"%.*s\" (%.*s)\n",
-                    pfSpread(pCmdView), pfSpread(pReasonView));
-        }
-        else
-        {
-            fprintf(stderr, "invalid command \"%.*s\" (%.*s \"%.*s\")\n",
-                    pfSpread(pCmdView), pfSpread(pReasonView),
-                    pfSpread(pSpecifiedTextView_optional));
-        }
-    }
-    else
-    {
-        if (view8Empty(pSpecifiedTextView_optional))
-        {
-            fprintf(stderr, "invalid command (%.*s)\n", 
-                    pfSpread(pReasonView));
-        }
-        else
-        {
-            fprintf(stderr, "invalid command (%.*s \"%.*s\")\n", 
-                    pfSpread(pReasonView), pfSpread(pSpecifiedTextView_optional));
-        }
-    }
+    printInvalidCmdError(pReasonView, pSpecifiedTextView_optional,
+                        pSharedInfo->pCmdView, pSharedInfo->srcType);
 }
 
 // Checks if size (strToSize() result) is part of utils_SizeSig error values and prints errors accordingly
@@ -63,27 +45,27 @@ bool checkPrintErroneousSize(uint64_t val, const View8* pSeg1, const View8* pSeg
 {
     if (val == (uint64_t)UTILS_SIZESIG_NO_NUMBER)
     {
-        printInvalidCmdError(&vw("no number"), pSeg1, pSharedInfo);
+        printInvalidCmdErrorSh(&vw("no number"), pSeg1, pSharedInfo);
     }
     else if (val == (uint64_t)UTILS_SIZESIG_INVALID_NUMBER)
     {
-        printInvalidCmdError(&vw("invalid number"), pSeg2, pSharedInfo);
+        printInvalidCmdErrorSh(&vw("invalid number"), pSeg2, pSharedInfo);
     }
     else if (val == (uint64_t)UTILS_SIZESIG_NO_UNIT)
     {
-        printInvalidCmdError(&vw("no unit"), pSeg2, pSharedInfo);
+        printInvalidCmdErrorSh(&vw("no unit"), pSeg2, pSharedInfo);
     }
     else if (val == (uint64_t)UTILS_SIZESIG_UNACCEPTABLE_ZERO)
     {
-        printInvalidCmdError(&vw("zero is unacceptable"), pSeg2, pSharedInfo);
+        printInvalidCmdErrorSh(&vw("zero is unacceptable"), pSeg2, pSharedInfo);
     }
     else if (val == (uint64_t)UTILS_SIZESIG_TOO_BIG_RESULT)
     {
-        printInvalidCmdError(pTooBigResultErrorText, pSeg2, pSharedInfo);
+        printInvalidCmdErrorSh(pTooBigResultErrorText, pSeg2, pSharedInfo);
     }
     else if (val == (uint64_t)UTILS_SIZESIG_INVALID_UNIT)
     {
-        printInvalidCmdError(&vw("invalid unit"), pSeg2, pSharedInfo);
+        printInvalidCmdErrorSh(&vw("invalid unit"), pSeg2, pSharedInfo);
     }
     else return false;
     return true;
@@ -92,20 +74,21 @@ bool checkPrintErroneousSize(uint64_t val, const View8* pSeg1, const View8* pSeg
 // Command Argument Value Type
 typedef enum AVType
 {
-    AVTYPETEXTUAL,
-    AVTYPENUMERIC
+    AVTYPE_NULL,
+    AVTYPE_TEXTUAL,
+    AVTYPE_NUMERIC
 } AVType;
 
 // Textual Command Argument Value Type
 typedef enum TextAVType
 {
-    TEXTAVTYPE_ARRAY_SPECIFIED,
-    TEXTAVTYPE_FILE_OR_NONE_PATH, // File path or inexistent path
+    TEXTAVTYPE_NULL,
+
+    TEXTAVTYPE_ARRAY_SPECIFIED, // Acceped values defined in array    
     TEXTAVTYPE_FILE_PATH,
     TEXTAVTYPE_DIR_PATH,
-
-    TEXTAVTYPE_EXISTING_DISK_PATH, // Disk path, or existing image file path
-    TEXTAVTYPE_ANY_DISK_PATH, // Disk path, or existing or inexistent image file path
+    TEXTAVTYPE_CREATABLE_DISK_PATH, // Disk path, or a creatable/existing image file path
+    TEXTAVTYPE_EXISTING_DISK_PATH, // Disk path, or an existing image file path
 } TextAVType;
 
 // Extracted Command Argument Value
@@ -113,7 +96,7 @@ typedef struct ExtractedAV
 {
     String8 textualVal;
     uint64_t numericVal;
-    geo_Type diskGeoType; // From disk/disk image path
+    utils_PathType pathType; // Path type if textual value is a path
 } ExtractedAV;
 
 // (Input) Command Argument Value Info
@@ -143,7 +126,7 @@ static AVInfo avinfoMakeTextual(const UTF8_t* pNameLowercase,
 {
     return (AVInfo){
         .nameLowercase = view8MakeCopyNT(pNameLowercase),
-        .type = AVTYPETEXTUAL,
+        .type = AVTYPE_TEXTUAL,
 
         .textual.type = type,
         .textual.pExpectedVals = pExpectedVals,
@@ -158,7 +141,7 @@ static AVInfo avinfoMakeTextual(const UTF8_t* pNameLowercase,
 // {
 //     return (AVInfo){
 //         .nameLowercase = view8MakeCopyNT(pNameLowercase),
-//         .type = AVTYPENUMERIC,
+//         .type = AVTYPE_NUMERIC,
 
 //         .numeric.zeroIsUnacceptable = zeroIsUnacceptable,
 //         .numeric.unitExpected = unitExpected,
@@ -234,7 +217,7 @@ utils_ErrorState result = UTILS_ERRORSTATE_FAILURE;
         // Check if segment didn't match any declarator
         if (currentDeclInfoI == SIZE_MAX)
         {
-            printInvalidCmdError(&vw("unexpected argument"), &at(pSegments, segI), pSharedInfo);
+            printInvalidCmdErrorSh(&vw("unexpected argument"), &at(pSegments, segI), pSharedInfo);
             fret(UTILS_ERRORSTATE_FAILURE);
         }
         // Check if the declarator is repeated
@@ -244,7 +227,7 @@ utils_ErrorState result = UTILS_ERRORSTATE_FAILURE;
             string8AppendNT(&errMsg, "repeated ");
             string8AppendVw(&errMsg, &currentDeclInfo.nameLowercase);
             string8AppendNT(&errMsg, " argument");
-            printInvalidCmdError(&vwstr(&errMsg), &at(pSegments, segI), pSharedInfo);
+            printInvalidCmdErrorSh(&vwstr(&errMsg), &at(pSegments, segI), pSharedInfo);
             fret(UTILS_ERRORSTATE_FAILURE);
         }
         // Set current declarator index to found
@@ -262,7 +245,7 @@ utils_ErrorState result = UTILS_ERRORSTATE_FAILURE;
             string8AppendNT(&errMsg, " values");
 
             // Declarator not printed if it's just the main command name
-            printInvalidCmdError(&vwstr(&errMsg),
+            printInvalidCmdErrorSh(&vwstr(&errMsg),
                     (currentDeclInfoI == 0)? &vw("") : &at(pSegments, segI),
                     pSharedInfo);
             fret(UTILS_ERRORSTATE_FAILURE);
@@ -273,15 +256,21 @@ utils_ErrorState result = UTILS_ERRORSTATE_FAILURE;
             const AVInfo valInfo = currentDeclInfo.valInfos[valI];
             const View8 valSeg = at(pSegments, segI +1 +valI);
             // Textual value
-            if (valInfo.type == AVTYPETEXTUAL)
+            if (valInfo.type == AVTYPE_TEXTUAL)
             {
                 bool valid = false;
-                geo_Type diskGeoType = GEO_TYPE_NONE;
-                if (valInfo.textual.type == TEXTAVTYPE_ARRAY_SPECIFIED)
+                utils_PathType pathType = UTILS_PATHTYPE_NULL;
+                // Any value allowed
+                if (valInfo.textual.type == TEXTAVTYPE_NULL)
                 {
-                    // Any value allowed
+                    valid = true;
+                }
+                // Array specified
+                else if (valInfo.textual.type == TEXTAVTYPE_ARRAY_SPECIFIED)
+                {
+                    // Any value allowed if array is empty
                     if (dstrEmpty(valInfo.textual.pExpectedVals)) valid = true;
-                    // Specific values allowed
+                    // Otherwise check specific values
                     else for (size_t i = 0; i < dstrSize(valInfo.textual.pExpectedVals); i++)
                     {
                         const View8 expectedVal = view8MakeCopyS( &at(valInfo.textual.pExpectedVals, i) );
@@ -295,59 +284,38 @@ utils_ErrorState result = UTILS_ERRORSTATE_FAILURE;
                 // Path types
                 else
                 {
-                    utils_PathType pathType = utils_getPathType(&valSeg);
+                    pathType = utils_getPathType(&valSeg);
+                    // Given path is invalid
                     if (pathType == UTILS_PATHTYPE_INVALID)
                     {
                         // "valid" remains false
                     }
-                    else if (valInfo.textual.type == TEXTAVTYPE_FILE_OR_NONE_PATH)
-                    {
-                        if (pathType == UTILS_PATHTYPE_FILE || pathType == UTILS_PATHTYPE_NONE)
-                            valid = true;
-                    }
+                    // File
                     else if (valInfo.textual.type == TEXTAVTYPE_FILE_PATH)
                     {
                         if (pathType == UTILS_PATHTYPE_FILE)
                             valid = true;
                     }
+                    // Directory
                     else if (valInfo.textual.type == TEXTAVTYPE_DIR_PATH)
                     {
                         if (pathType == UTILS_PATHTYPE_DIR)
                             valid = true;
                     }
+                    // Disk, existing image, or creatable image
+                    else if (valInfo.textual.type == TEXTAVTYPE_CREATABLE_DISK_PATH)
+                    {
+                        if (pathType == UTILS_PATHTYPE_DISK
+                        || pathType == UTILS_PATHTYPE_FILE
+                        || pathType == UTILS_PATHTYPE_MAYBE_CREATABLE)
+                            valid = true;
+                    }
+                    // Disk, or existing image
                     else if (valInfo.textual.type == TEXTAVTYPE_EXISTING_DISK_PATH)
                     {
-                        if (pathType == UTILS_PATHTYPE_DISK)
-                        {
+                        if (pathType == UTILS_PATHTYPE_DISK
+                        || pathType == UTILS_PATHTYPE_FILE)
                             valid = true;
-                            diskGeoType = GEO_TYPE_RAW_DISK;
-                        }
-                        else if (pathType == UTILS_PATHTYPE_FILE)
-                        {
-                            valid = true;
-                            // MUST BE PATH-DEPENDANT WHEN ADDING MORE FILE FORMATS
-                            diskGeoType = GEO_TYPE_RAW_IMAGE;
-                        }
-                    }
-                    else if (valInfo.textual.type == TEXTAVTYPE_ANY_DISK_PATH)
-                    {
-                        if (pathType == UTILS_PATHTYPE_DISK)
-                        {
-                            valid = true;
-                            diskGeoType = GEO_TYPE_RAW_DISK;
-                        }
-                        else if (pathType == UTILS_PATHTYPE_FILE)
-                        {
-                            valid = true;
-                            // MUST BE PATH-DEPENDANT WHEN ADDING MORE FILE FORMATS
-                            diskGeoType = GEO_TYPE_RAW_IMAGE;
-                        }
-                        else if (pathType == UTILS_PATHTYPE_NONE)
-                        {
-                            valid = true;
-                            // MUST BE PATH-DEPENDANT WHEN ADDING MORE FILE FORMATS
-                            diskGeoType = GEO_TYPE_RAW_IMAGE;
-                        }
                     }
                 }
                 // Print error or set extracted value
@@ -356,7 +324,7 @@ utils_ErrorState result = UTILS_ERRORSTATE_FAILURE;
                     string8AppendNT(&errMsg, "invalid ");
                     string8AppendVw(&errMsg, &valInfo.nameLowercase);
                     string8AppendNT(&errMsg, " value");
-                    printInvalidCmdError(&vwstr(&errMsg), &valSeg, pSharedInfo);
+                    printInvalidCmdErrorSh(&vwstr(&errMsg), &valSeg, pSharedInfo);
                     fret(UTILS_ERRORSTATE_FAILURE);
                 }
                 else if (valInfo.pExtracted == NULL)
@@ -368,11 +336,11 @@ utils_ErrorState result = UTILS_ERRORSTATE_FAILURE;
                 else
                 {
                     string8CopyVw(&valInfo.pExtracted->textualVal, &valSeg);
-                    valInfo.pExtracted->diskGeoType = diskGeoType;
+                    valInfo.pExtracted->pathType = pathType;
                 }
             }
             // Numeric value
-            else if (valInfo.type == AVTYPENUMERIC)
+            else if (valInfo.type == AVTYPE_NUMERIC)
             {
                 uint64_t val = utils_strToSizeVw(&valSeg, valInfo.numeric.zeroIsUnacceptable,
                                                 pSharedInfo->alwaysBinaryUnits, valInfo.numeric.unitExpected);
@@ -405,7 +373,7 @@ utils_ErrorState result = UTILS_ERRORSTATE_FAILURE;
             string8AppendNT(&errMsg, "expected ");
             string8AppendVw(&errMsg, &at(pDeclInfos, declInfoI).nameLowercase);
             string8AppendNT(&errMsg, " arguments");
-            printInvalidCmdError(&vwstr(&errMsg), &vw(""), pSharedInfo);
+            printInvalidCmdErrorSh(&vwstr(&errMsg), &vw(""), pSharedInfo);
             fret(UTILS_ERRORSTATE_FAILURE);
         }
         // Set default values for missing optional declarators
@@ -414,10 +382,10 @@ utils_ErrorState result = UTILS_ERRORSTATE_FAILURE;
             const AVInfo valInfo = at(pDeclInfos, declInfoI).valInfos[valI];
             if (!valInfo.pExtracted) continue;
             // Textual value
-            if (valInfo.type == AVTYPETEXTUAL)
+            if (valInfo.type == AVTYPE_TEXTUAL)
                 string8CopyVw(&valInfo.pExtracted->textualVal, &valInfo.textual.defaultVal);
             // Numeric value
-            else if (valInfo.type == AVTYPENUMERIC)
+            else if (valInfo.type == AVTYPE_NUMERIC)
                 valInfo.pExtracted->numericVal = valInfo.numeric.defaultVal;
         }
     }
@@ -429,19 +397,21 @@ end:
     return result;
 };
 
+
+
 // Returns parsed command and error state
 // Prints command errors on encounter
 utils_ErrorState parseCmd(const View8* pCmdView, const Dview* pSegments,
-                            bool alwaysBinaryUnits, ParseType parseType, Cmd* pResultCmd)
+                            bool alwaysBinaryUnits, SrcType srcType, Cmd* pResultCmd)
 {
     // For quickly passing these 2 args to called functions
-    SharedInfo sharedInfo = sharedinfoMake(pCmdView, parseType, alwaysBinaryUnits);
+    SharedInfo sharedInfo = sharedinfoMake(pCmdView, srcType, alwaysBinaryUnits);
     // Argument declarator infos for parsing (freed at end of function)
     Dadinfo declInfos = {0};
 
-    Cmd resultCmd = {0}; // Type kept as CMDTYPE_NONE on errors
+    Cmd resultCmd = {0}; // Type kept as CMDTYPE_NULL on errors
     bool error = false; // Set to true on error discovery
-    bool internalSkip = false; // If true: CMDTYPE_NONE is a skipped command rather than an erroneous one
+    bool internalSkip = false; // If true: CMDTYPE_NULL is a skipped command rather than an erroneous one
     
     // All whitespace no segments
     if (dviewEmpty(pSegments))
@@ -510,7 +480,7 @@ utils_ErrorState parseCmd(const View8* pCmdView, const Dview* pSegments,
 
             // If only one segment is in the array it will print an error
             dadinfoAppendV(&declInfos, adinfoMake("select", true, (AVInfo[]){
-                avinfoMakeTextual("disk path", TEXTAVTYPE_ANY_DISK_PATH, NULL, NULL, &path)
+                avinfoMakeTextual("disk path", TEXTAVTYPE_CREATABLE_DISK_PATH, NULL, NULL, &path)
             }, 1));
 
             if (validatePrintExtractVals(pSegments, &declInfos, &sharedInfo)
@@ -518,7 +488,25 @@ utils_ErrorState parseCmd(const View8* pCmdView, const Dview* pSegments,
             else
             {
                 resultCmd.type = CMDTYPE_SELECT_DISK;
-                resultCmd.info.selectDisk.type = path.diskGeoType;
+                if (path.pathType == UTILS_PATHTYPE_FILE
+                || path.pathType == UTILS_PATHTYPE_MAYBE_CREATABLE)
+                {
+                    resultCmd.info.selectDisk.type = geo_fileTypeToGeoType(
+                        utils_getFileType(&vwstr(&path.textualVal))
+                    );
+                }
+                else if (path.pathType == UTILS_PATHTYPE_DISK
+                || path.pathType == UTILS_PATHTYPE_PART)
+                {
+                    resultCmd.info.selectDisk.type = GEO_TYPE_RAW_DISK;
+                }
+                else
+                {
+                    fprintf(stderr, "invalid path type (%u) in %s,"
+                            " validatePrintExtractVals() should've returned an error\n",
+                            path.pathType, __func__);
+                    exit(EXIT_FAILURE);
+                }
                 cmdInfoSelectDiskAdoptPath(&resultCmd.info, &path.textualVal);
             }
         }
@@ -542,7 +530,7 @@ utils_ErrorState parseCmd(const View8* pCmdView, const Dview* pSegments,
     {
         if (dviewSize(pSegments) > 1)
         {
-            printInvalidCmdError(&vw("unexpected arguments"), &vw(""), &sharedInfo);
+            printInvalidCmdErrorSh(&vw("unexpected arguments"), &vw(""), &sharedInfo);
             error = true;
         }
         else resultCmd = cmdMake(CMDTYPE_EXIT, (CmdInfo){0});
@@ -557,6 +545,17 @@ utils_ErrorState parseCmd(const View8* pCmdView, const Dview* pSegments,
             != UTILS_ERRORSTATE_SUCCESS) error = true;
         else
             resultCmd = cmdMake(CMDTYPE_HELP, (CmdInfo){0});
+    }
+
+    // Version command
+    else if (utils_compareLowNT(&at(pSegments, 0), "version"))
+    {
+        dadinfoAppendV(&declInfos, adinfoMake("version", true, NULL, 0));
+
+        if (validatePrintExtractVals(pSegments, &declInfos, &sharedInfo)
+            != UTILS_ERRORSTATE_SUCCESS) error = true;
+        else
+            resultCmd = cmdMake(CMDTYPE_VERSION, (CmdInfo){0});
     }
     
     // edit disk
@@ -597,12 +596,34 @@ utils_ErrorState parseCmd(const View8* pCmdView, const Dview* pSegments,
     //         cmdInfoOpenDiskSetPath(&resultCmd.info, &path.textualVal);
     //     }
     // }
+
+    // Easter eggs
+    else if (dviewSize(pSegments) == 1
+    && utils_compareLowNT(&at(pSegments, 0), u8"Помоћ"))
+    {
+        printf("Не причам српски 😔\n");
+        internalSkip = true;
+    }
+    else if (dviewSize(pSegments) == 2
+    && utils_compareLowNT(&at(pSegments, 0), "aide")
+    && utils_compareLowNT(&at(pSegments, 1), "moi"))
+    {
+        printf(u8"je parle pas français 😔\n");
+        internalSkip = true;
+    }
+    else if (dviewSize(pSegments) == 2
+    && utils_compareLowNT(&at(pSegments, 0), "big")
+    && utils_compareLowNT(&at(pSegments, 1), "k"))
+    {
+        printf("well lets not talk abt it\n");
+        internalSkip = true;
+    }
     
     // Unsupported command
-    if (internalSkip) resultCmd.type = CMDTYPE_NONE;
-    else if (!error && resultCmd.type == CMDTYPE_NONE)
+    if (internalSkip) resultCmd.type = CMDTYPE_NULL;
+    else if (!error && resultCmd.type == CMDTYPE_NULL)
     {
-        printInvalidCmdError(&vw("unsupported command"), &vw(""), &sharedInfo);
+        printInvalidCmdErrorSh(&vw("unsupported command"), &vw(""), &sharedInfo);
         error = true;
     }
 
@@ -617,212 +638,3 @@ utils_ErrorState parseCmd(const View8* pCmdView, const Dview* pSegments,
     *pResultCmd = resultCmd;
     return (!error)? UTILS_ERRORSTATE_SUCCESS : UTILS_ERRORSTATE_FAILURE;
 }
-
-
-
-// // value at pI must be initialized to 0 at the beginning
-// // Returns UTILS_ERRORSTATE_FAILURE on call after end of file
-// utils_ErrorState p_getFileLine(String8* pResult, const Dbyte* pDarray, size_t* pI)
-// {
-//     if (*pI >= dbyteSize(pDarray))
-//     {
-//         *pResult = string8MakeCopyNT("");
-//         return UTILS_ERRORSTATE_FAILURE;
-//     }
-//     for (size_t i = *pI; i <= dbyteSize(pDarray); i++)
-//     {
-//         if (i == dbyteSize(pDarray) || at(pDarray, i) == '\n')
-//         {
-//             *pI = (i +1);
-//             if (i != 0 && at(pDarray, i -1) == '\r')
-//                 i--;
-//             string8CopyPS(pResult, (UTF8_t*)dbyteDataConst(pDarray),
-//                             dbyteSize(pDarray) -i);
-//             break;
-//         }
-//     }
-//     return UTILS_ERRORSTATE_SUCCESS;
-// }
-
-// // Returns clean string view (no comments or line-continue character)
-// // Sets *pExpectingNextLine to true = command continues into the next line (mult-line)
-// View8 p_cleanFileLine(const String8* pLineString, bool* pExpectingNextLine)
-// {
-//     View8 processView = view8MakeCopyS(pLineString);
-//     // Remove comment
-//     for (size_t i = 0; i < view8Size(&processView); i++)
-//     {
-//         if (at(&processView, i) == '#' // Comment
-//         && (i == 0 || isspace((unsigned char)at(&processView, i -1))) ) // Nothing or space before it
-//         // Hashtag may be part of commands so gotta ensure nothing is stuck behind it like "something#"
-//         {
-//             view8EraseEnd(&processView, i +1);
-//             break;
-//         }
-//     }
-//     // Check for and remove line-continue character
-//     bool continueNextLine = false;
-//     for (size_t i = view8Size(&processView) -1; i != SIZE_MAX; i--)
-//     {
-//         if (isspace((unsigned char)at(&processView, i)) ) continue;
-//         else if (at(&processView, i) != '\\') break; // Normal character (not space nor line-continue character)
-//         else // line-continue character "\"
-//         {
-//             continueNextLine = true;
-//             view8EraseEnd(&processView, view8Size(&processView) -1);
-//             break;
-//         }
-//     }
-//     *pExpectingNextLine = continueNextLine;
-//     return processView;
-// }
-
-// // Validates instructions file and returns instructions vector (empty if contains errors)
-// Dins p_parseFile(const View8* pPathView, bool alwaysBinaryUnits)
-// {
-//     Dins results = {0};
-//     size_t errorCount = 0;
-
-//     Dbyte file = {0}; size_t fileStreamI = 0;
-//     if (utils_readFile(pPathView, &file) != UTILS_ERRORSTATE_SUCCESS) return results;
-
-//     // Loop over the file
-//     String8 insString = {0};
-//     Dview insSegments = {0};
-//     String8 dirtyLineString = {0};
-//     bool expectingNextLine = false;
-//     while (p_getFileLine(&dirtyLineString, &file, &fileStreamI) != UTILS_ERRORSTATE_FAILURE
-//     || expectingNextLine) // Line = "" if nothing left in stream
-//     {
-//         // If expectingNextLine && line == "": expectingNextLine = false
-//         //   then the loop stops even if the last line has a redundant line-continue character "\"
-//         View8 line = p_cleanFileLine(&dirtyLineString, &expectingNextLine);
-//         // Cut line into segments and append to total instruction segments
-//         for (size_t i = 0; i < view8Size(&line); /**/)
-//         {
-//             // Skip spaces
-//             size_t wsSize = 0;
-//             if (isSpaceNT8(view8Data(&line) +i, &wsSize)) i+= wsSize;
-//             // Convert quoted text to one segment
-//             else if (at(&line, i) == '\"' || at(&line, i) == '\'')
-//             {
-//                 size_t j = i +1;
-//                 for (; j <= view8Size(&line); j++)
-//                 {
-//                     if (j == view8Size(&line)
-//                     || at(&line, j) == '\"' || at(&line, j) == '\'')
-//                         break;
-//                 }
-//                 // Add segment, no prefix padding space if last segment
-//                 View8 seg = view8SubStr(&line, i, j -i);
-//                 if (!expectingNextLine && i +1 == view8Size(&line)) string8AppendCU(&insString, ' ');
-//                 string8AppendVw(&insString, &seg);
-//                 dviewAppendR(&insSegments, &seg);
-//                 i = j +1;
-//             }
-//             // Normal unquoted segment
-//             else
-//             {
-//                 size_t j = i +1;
-//                 for (; j <= view8Size(&line); j++)
-//                 {
-//                     if (j == view8Size(&line) || isspace(at(&line, j)))
-//                         break;
-//                 }
-//                 // Add segment, no prefix padding space if last segment
-//                 View8 seg = view8SubStr(&line, i, j -i);
-//                 if (!expectingNextLine && i +1 == view8Size(&line)) string8AppendCU(&insString, ' ');
-//                 string8AppendVw(&insString, &seg);
-//                 dviewAppendR(&insSegments, &seg);
-//                 i = j +1;
-//             }
-//         }
-//         // Continue adding if expecting a new line
-//         if (expectingNextLine) continue;
-        
-//         // Parse
-//         Ins ins = {0};
-//         utils_ErrorState errorState = p_parseIns(&vwstr(&insString), &insSegments,
-//                                             alwaysBinaryUnits, P_CALLER_PARSE_FILE, &ins);
-//         dviewClear(&insSegments); // Clear segments for next instruction
-//         // Error happened
-//         if (errorState != UTILS_ERRORSTATE_SUCCESS)
-//         {
-//             errorCount++;
-//             dinsClear(&results);
-//             // Don't return, but keep checking more errors
-//         }
-
-//         // Add to results if no error happened & not a None
-//         if (errorCount == 0 && ins.type != CMDTYPE_NONE)
-//         {
-//             dinsAppendR(&results, &ins);
-//             // Activate set binary instructions locally while parsing the file
-//             if (ins.type == CMDTYPE_SET_BINARY) alwaysBinaryUnits = ins.info.switchValue;
-//         }
-//         // 10 errors max so user isn't overwhelmed
-//         else if (errorCount == 10) break;
-//     }
-
-//     return results;
-// }
-
-// // First segment MUST start with "-" checked before call
-// Dins p_parseDirectArgs(const Dview* pArgs, bool alwaysBinaryUnits)
-// {
-//     // For passing instructions via direct arguments
-//     //   e.g. "disker - openvd x.img - format mbr parts 1 - part 1 fs FAT32 size 16gb"
-    
-//     Dins results = {0};
-//     size_t errorCount = 0;
-    
-//     // Loop over argument segments
-//     String8 insString = {0};
-//     Dview insSegments = {0};
-//     size_t startJ = 1; // Index of start of instruction that will be currently parsed
-//     for (size_t i = 1; i <= dviewSize(pArgs); i++)
-//     {
-//         // Keep skipping until we reach the end or a new instruction
-//         if (i != dviewSize(pArgs) && view8StartsWithNT(&at(pArgs, i), "-"))
-//             continue;
-        
-//         // Remove "-" off the first segment
-//         for (size_t j = startJ; j < i; j++)
-//         {
-//             View8 seg = at(pArgs, j);
-//             // Remove "-" off the first segment
-//             if (j == startJ) view8EraseStart(&seg, 1);
-//             // Add segment + padding space if not last segment
-//             string8AppendVw(&insString, &seg);
-//             if (j +1 != i) string8AppendCU(&insString, ' ');
-//             dviewAppendR(&insSegments, &seg);
-//         }
-//         startJ = i; // Set start for the current instruction (at [i])
-
-//         // Parse
-//         Ins ins = {0};
-//         utils_ErrorState errorState = p_parseIns(&vwstr(&insString), &insSegments,
-//                                                 alwaysBinaryUnits, P_CALLER_PARSE_DIRECT_ARGS, &ins);
-//         // Error happened
-//         if (errorState != UTILS_ERRORSTATE_SUCCESS)
-//         {
-//             errorCount++;
-//             dinsClear(&results);
-//             // Don't return, but keep checking more errors
-//         }
-//         // Add to results if no error happened & not a None
-//         if (errorCount == 0 && ins.type != CMDTYPE_NONE)
-//         {
-//             dinsAppendR(&results, &ins);
-//             // Activate set binary instructions locally while parsing the file
-//             if (ins.type == CMDTYPE_SET_BINARY) alwaysBinaryUnits = ins.info.switchValue;
-//         }
-        
-//         // 10 errors max so user isn't overwhelmed
-//         if (errorCount == 10) break;
-//     }
-
-//     string8Free(&insString);
-//     dviewFree(&insSegments);
-//     return results;
-// }

@@ -4,10 +4,21 @@
 #include "../../utils/utils.h"
 #include "../cmds/cmds.h"
 #include "./tui.h"
+#include "utils/tui.h"
 
-static void run(SharedState* pSharedState);
+typedef struct ProgState
+{
+    bool allYes;
+    bool alwaysBinaryUnits;
+    DiskInfo diskInfo;
+    scheme_Type selectedScheme;
+    uint64_t selectedPartNum;
+    Dcmd commands; // Collection of commands to write to disk/image directly after "save"
+} ProgState;
 
-extern void getRunCmds(const Dview* pArgs)
+static void getRunCmds(SrcState* pSrcState);
+
+extern void core(const Dview* pArgs)
 {
     // Print requested help or explain help command usage
     if (dviewSize(pArgs) == 2 && (
@@ -31,34 +42,47 @@ extern void getRunCmds(const Dview* pArgs)
     ))
         utils_version();
 
-    SharedState sharedState = {
-        .parseType = PARSETYPE_NONE,
-        .fd = NULL,
-        .i = 0
-    };
+    SrcState srcState = {0};
+    Dbyte dfile = {0};
+
     // Commands via terminal (line by line)
-    if (dviewSize(pArgs) == 1) sharedState.parseType = PARSETYPE_TERMINAL_LINES;
+    if (dviewSize(pArgs) == 1) srcState.srcType = SRCTYPE_TERMINAL_LINES;
     // Commands via direct program arguments
-    else if (view8StartsWithNT(&at(pArgs, 1), "-")) sharedState.parseType = PARSETYPE_DIRECT_ARGS;
+    else if (view8StartsWithNT(&at(pArgs, 1), "-"))
+    {
+        srcState.srcType = SRCTYPE_DIRECT_ARGS;
+        srcState.pArgs = pArgs;
+    }
     // Commands via file
     else if (dviewSize(pArgs) == 2)
     {
-        sharedState.parseType = PARSETYPE_FILE;
-        if (!view8Terminated(&at(pArgs, 1)))
+        srcState.srcType = SRCTYPE_FILE;
+        const View8* pPath = &at(pArgs, 1);
+        // Open file
+        utils_SysHandle fh = utils_openFile(pPath, (bool*)false);
+        if (fh == UTILS_SYSHANDLE_NONE)
+            return;
+        // Get file size
+        uint64_t size = utils_getFileSize(pPath);
+        if (size == UTILS_SIZESIG_NO_NUMBER)
         {
-            fprintf(stderr, "non-null-terminated view given to %s,"
-                            " that should NEVER happen\n",
-                            __func__);
-            exit(EXIT_FAILURE);
+            utils_closeFile(pPath, &fh);
+            return;
         }
-        const char* pathNT = view8Data(&at(pArgs, 1));
-        sharedState.fd = fopen(pathNT, "rb");
-        if (sharedState.fd == NULL)
+        // Read file
+        void* pFileBuffer = NULL;
+        if (utils_readFile(pPath, fh, 0, size, &pFileBuffer)
+        != UTILS_ERRORSTATE_SUCCESS)
         {
-            fprintf(stderr, "failed to open commands file \"%s\"\n",
-                            pathNT);
-            exit(EXIT_FAILURE);
+            utils_closeFile(pPath, &fh);
+            return;
         }
+        // Close file
+        if (utils_closeFile(pPath, &fh)
+        != UTILS_ERRORSTATE_SUCCESS)
+            return;
+        // Adopt data into darray
+        dbyteAdoptPS(&dfile, (uint8_t**)&pFileBuffer, size);
     }
     // Invalid args
     else
@@ -71,48 +95,48 @@ extern void getRunCmds(const Dview* pArgs)
         exit(EXIT_FAILURE);
     }
 
-    run(&sharedState);
-    
-    if (sharedState.fd != NULL) fclose(sharedState.fd);
+    getRunCmds(&srcState);
+
+    dbyteFree(&dfile);
 }
 
 
 
 // Appends clean segment views from source string into given darray
-void cutTerminalLine(const String8* pSrcString, Dview* pSegViews)
+// Used for terminal and file lines (pre-processing must be done first)
+// DOES NOT CLEAR SEGMENT VIEWS DARRAY
+static void _cutCmdTextCore(const View8* pSrc, Dview* pSegViews)
 {
-    // Clear previous segments and append segment views
-    dviewClear(pSegViews);
-    for (size_t i = 0; i < string8Size(pSrcString); /**/)
+    for (size_t i = 0; i < view8Size(pSrc); /**/)
     {
         // Skip spaces
         size_t spaceSize = 0;
-        if (isSpacePS8(string8DataConst(pSrcString) +i, string8Size(pSrcString) -1, &spaceSize))
+        if (isSpacePS8(view8Data(pSrc) +i, view8Size(pSrc) -1, &spaceSize))
             i += spaceSize;
         // Convert quoted text to one segment
-        else if (at(pSrcString, i) == '\"' || at(pSrcString, i) == '\'')
+        else if (at(pSrc, i) == '\"' || at(pSrc, i) == '\'')
         {
             size_t j = i +1;
-            for (; j <= string8Size(pSrcString); j++)
+            for (; j <= view8Size(pSrc); j++)
             {
-                if (j == string8Size(pSrcString)
-                || at(pSrcString, j) == '\"' || at(pSrcString, j) == '\'')
+                if (j == view8Size(pSrc)
+                || at(pSrc, j) == '\"' || at(pSrc, j) == '\'')
                     break;
             }
-            dviewAppendV(pSegViews, view8SubStr(&vwstr(pSrcString), i, j -i));
+            dviewAppendV(pSegViews, view8SubStr(&vwstr(pSrc), i, j -i));
             i = j +1;
         }
         // Normal unquoted segment
         else
         {
             size_t j = i +1;
-            for (; j <= string8Size(pSrcString); j++)
+            for (; j <= view8Size(pSrc); j++)
             {
-                if (j == string8Size(pSrcString)
-                || isSpacePS8(string8DataConst(pSrcString) +j, string8Size(pSrcString) -j, NULL))
+                if (j == view8Size(pSrc)
+                || isSpacePS8(view8Data(pSrc) +j, view8Size(pSrc) -j, NULL))
                     break;
             }
-            dviewAppendV(pSegViews, view8SubStr(&vwstr(pSrcString), i, j -i));
+            dviewAppendV(pSegViews, view8SubStr(&vwstr(pSrc), i, j -i));
             i = j +1;
         }
     }
@@ -120,49 +144,250 @@ void cutTerminalLine(const String8* pSrcString, Dview* pSegViews)
 
 // Takes terminal input and outputs command string and clean segments
 // String and darray 100% managed by the function except freeing them
-void getCleanTerminalLine(String8* pBuffer, Dview* pSegViews)
+static void getCleanTerminalText(String8* pBuffer, Dview* pSegViews)
 {
+    printf("Disker> ");
     utils_getTerminalLine(pBuffer);
-    cutTerminalLine(pBuffer, pSegViews);
+    // Clear previous segments and append segment views
+    dviewClear(pSegViews);
+    _cutCmdTextCore(&vwstr(pBuffer), pSegViews);
+}
+
+// Takes file and outputs command string and clean segments
+// Returns false when reaching after end of file
+// String and darray 100% managed by the function except freeing them
+static bool getCleanFileText(SrcState* pSrcState, String8* pBuffer, Dview* pSegViews)
+{
+    // Clear previous string buffer
+    string8Clear(pBuffer);
+    // Clear previous segments
+    dviewClear(pSegViews);
+    // Check if reached end of file
+    if (pSrcState->i >= dbyteSize(pSrcState->pFile)) return false;
+    
+    // Loop to get command segment out of arguments
+    const Dbyte* pFile = pSrcState->pFile;
+    // Index of start of command that will be currently parsed
+    size_t fileStartI = pSrcState->i;
+    for (size_t fileI = fileStartI; fileI <= dbyteSize(pFile); fileI++)
+    {
+        // Seek end of line
+        if (fileI == dbyteSize(pFile) || at(pFile, fileI) == '\n')
+        {
+            // Get line view
+            View8 lineVw = view8MakeCopyPS((UTF8_t*)(dbyteDataConst(pFile) +fileStartI), fileI -fileStartI);
+            view8Trim(&lineVw);
+            if (view8Size(&lineVw) == 0) break;
+
+            // Clear off comment (must not be stuck to previous text JIC it's part of an argument)
+            size_t commentI = view8FindNT(&lineVw, "#");
+            if (commentI != STRING_NF
+            && (commentI == 0 || revIsSpacePS8(view8Data(&lineVw), commentI, NULL) ))
+                view8EraseEnd(&lineVw, view8Size(&lineVw) -commentI);
+            view8Trim(&lineVw);
+            if (view8Size(&lineVw) == 0) break;
+
+            // Check and remove line continue character "\" at the end
+            bool lineContinue = false;
+            if (at(&lineVw, view8Size(&lineVw) -1) == '\\')
+            {
+                lineContinue = true;
+                view8EraseEnd(&lineVw, 1);
+            }
+            view8Trim(&lineVw);
+            // _cleanCmdTextCore() will safely handle 0 size anyway
+            // if (view8Size(&lineVw) == 0) continue;
+
+            // Append to string + padding space if next line included
+            string8AppendVw(pBuffer, &lineVw);
+            if (lineContinue) string8AppendCU(pBuffer, ' ');
+
+            // Append segments to segment views (func will also clean quotes off)
+            _cutCmdTextCore(&lineVw, pSegViews);
+
+            // Continue onto next line and add to same string and segment views
+            //   if a line continue character "\" is at the end
+            if (lineContinue) continue;
+            else
+            {
+                fileStartI = fileI;
+                break;
+            }
+        }
+    }
+    pSrcState->i = fileStartI;
+    return true;
+}
+
+// Takes arguments and outputs command string and clean segments
+// Returns false when reaching after end of arguments
+// String and darray 100% managed by the function except freeing them
+// First segment MUST start with "-" checked before call
+static bool getCleanArgsText(SrcState* pSrcState, String8* pBuffer, Dview* pSegViews)
+{
+    // Clear previous string buffer
+    string8Clear(pBuffer);
+    // Clear previous segments
+    dviewClear(pSegViews);
+    // Check if reached end of arguments
+    if (pSrcState->i >= dviewSize(pSrcState->pArgs)) return false;
+
+    // Loop to get command segment out of arguments
+    const Dview* pArgs = pSrcState->pArgs;
+    String8* pInsString = pBuffer;
+    Dview* pInsSegments = pSegViews;
+    // Index of start of command that will be currently parsed
+    if (pSrcState->i == 0) pSrcState->i = 1;
+    size_t startI = pSrcState->i;
+    for (size_t i = startI; i <= dviewSize(pArgs); i++)
+    {
+        // Keep skipping segments until we reach the total end or a new command
+        if (i != dviewSize(pArgs) && view8StartsWithNT(&at(pArgs, i), "-"))
+            continue;
+        // Reached end or new command:
+        else
+        {
+            // Save string and segments
+            for (size_t j = startI; j < i; j++)
+            {
+                View8 seg = at(pArgs, j);
+                // Remove "-" off the first segment
+                if (j == startI) view8EraseStart(&seg, 1);
+                // Add segment + padding space if not last segment
+                string8AppendVw(pInsString, &seg);
+                if (j +1 != i) string8AppendCU(pInsString, ' ');
+                dviewAppendR(pInsSegments, &seg);
+            }
+            // Set start for the next command and stop looping
+            startI = i;
+            break;
+        }
+    }
+    pSrcState->i = startI;
+    return true;
 }
 
 // Outputs cleaned command string and segments
 // Returns false when reaching after end of data stream
 // String and darray 100% managed by the function except freeing them
-bool getCmdText(SharedState* pSharedState, String8* pBuffer, Dview* pSegmentViews)
+static bool getCmdText(SrcState* pSrcState, String8* pBuffer, Dview* pSegmentViews)
 {
-    switch (pSharedState->parseType)
+    switch (pSrcState->srcType)
     {
-    case PARSETYPE_TERMINAL_LINES:
-        getCleanTerminalLine(pBuffer, pSegmentViews);
+    case SRCTYPE_TERMINAL_LINES:
+        getCleanTerminalText(pBuffer, pSegmentViews);
         return true;
-    case PARSETYPE_DIRECT_ARGS:
-        break;
-    case PARSETYPE_FILE:
-        break;
+    case SRCTYPE_DIRECT_ARGS:
+        return getCleanArgsText(pSrcState, pBuffer, pSegmentViews);
+    case SRCTYPE_FILE:
+        return getCleanFileText(pSrcState, pBuffer, pSegmentViews);
     default:
-        fprintf(stderr, "unprogrammed pSharedState->parseType (%u) given to %s\n",
-                        pSharedState->parseType, __func__);
+        fprintf(stderr, "unprogrammed pSrcState->srcType (%u) given to %s\n",
+                        pSrcState->srcType, __func__);
         exit(EXIT_FAILURE);
     }
     return true; // Gotta put this or compiler will crash out 🙀
 }
 
-static void run(SharedState* pSharedState)
+
+
+static void cmdSave(ProgState* pState, const SrcState* pSrcState)
 {
-    typedef struct LocalState
+    bool yesSavePlz = false;
+    if (pState->allYes && pState->diskInfo.geometry.type != GEO_TYPE_RAW_DISK)
+        yesSavePlz = true;
+    else
     {
-        bool allYes;
-        bool alwaysBinaryUnits;
-        DiskInfo diskInfo;
-        scheme_Type selectedScheme;
-        uint64_t selectedPartNum;
-        Dcmd commands; // Segment of commands to apply (write to disk/disk image)
-    } LocalState;
-    LocalState localState = {
+        printf("Are you sure you want to save these changes?\n");
+        yesSavePlz = utils_confirmation();
+    }
+    // Apply commands
+    if (yesSavePlz)
+    {
+        for (size_t i = 0; i < dcmdSize(&pState->commands); i++)
+        {
+            WriteCmdInfo info = {
+                .pCmd = &at(&pState->commands, i),
+                .pDiskInfo = &pState->diskInfo,
+                .selectedScheme = pState->diskInfo.scheme.type,
+                .selectedPartNum = 1
+            };
+            // if (at(&pState->commands, i).type == CMDTYPE_SELECT_SCHEME)
+            //     info.selectedScheme = 
+            // if (at(&pState->commands, i).type == CMDTYPE_SELECT_PART)
+            //     info.selectedPartNum = 
+            if (writeCmd(&info) != UTILS_ERRORSTATE_SUCCESS)
+            {
+                // Don't exit on error for terminal line-by-line input
+                if (pSrcState->srcType == SRCTYPE_TERMINAL_LINES) break; // Breaks loop NOT THE SWITCH
+                else exit(EXIT_FAILURE);
+            }
+        }
+        dcmdClear(&pState->commands); // Clear commands for next collection
+    }
+}
+
+// Returns true on exit confirmation
+static bool cmdExit(ProgState* pState)
+{
+    if (pState->diskInfo.handle != UTILS_SYSHANDLE_NONE
+    && !dcmdEmpty(&pState->commands))
+    {
+        printf("warning: you have unsaved changes,"
+            " are you sure you want to exit the program?\n");
+        return utils_confirmation();
+    }
+    else return false;
+}
+
+static void cmdSelectDisk(ProgState* pState, CmdInfo* pInfo)
+{
+    if (!pState->allYes || pInfo->selectDisk.type == GEO_TYPE_RAW_DISK)
+    {
+        printf("Are you sure you want to select the disk \"%s\"?\n",
+                view8NT(&pInfo->selectDisk.path));
+        if (!utils_confirmation()) return;
+    }
+    bool createdNewFile = false;
+    if (diskInfoOpenRead(cmdInfoSelectDiskReleasePath(pInfo), &pState->diskInfo, &createdNewFile)
+        != UTILS_ERRORSTATE_SUCCESS) return;
+    if (createdNewFile)
+        printf("Created disk \"%s\"\n", string8NT(&pState->diskInfo.path));
+    else
+    {
+        const char* schemeText = NULL;
+        if (pState->diskInfo.scheme.type == SCHEME_TYPE_MBR) schemeText = "MBR";
+                                                            else schemeText = "GPT";
+        printf(
+            "Opened disk \"%s\":\n"
+            "  - Size: %llu bytes\n"
+            "  - Sector size: %llu\n"
+            "  - Alignment: %llu\n"
+            "  - Scheme: %s\n"
+            "\n", string8NT(&pState->diskInfo.path),
+            pState->diskInfo.geometry.data.raw.size,
+            pState->diskInfo.geometry.data.raw.sectorSize,
+            pState->diskInfo.geometry.data.raw.alignment,
+            schemeText
+        );
+    }
+}
+
+static void cmdEditDisk(ProgState* pState, const CmdInfo* pInfo)
+{
+    // Validate edits relative to current state
+    //   and change state according to edits
+    //
+    //
+    //
+}
+
+static void getRunCmds(SrcState* pSrcState)
+{
+    ProgState progState = {
         .allYes = false,
         .alwaysBinaryUnits = true,
-        .diskInfo = diskInfoMakeDefault(),
+        .diskInfo = DISKINFO_DEFAULT,
         .selectedScheme = 0,
         .selectedPartNum = 0,
         .commands = {0},
@@ -171,138 +396,69 @@ static void run(SharedState* pSharedState)
     Dview cmdSegments = {0};
     while (true)
     {
-        if (pSharedState->parseType == PARSETYPE_TERMINAL_LINES)
-            printf("Disker> ");
-        if (!getCmdText(pSharedState, &cmdString, &cmdSegments))
+        if (!getCmdText(pSrcState, &cmdString, &cmdSegments))
             fretvoid;
         Cmd cmd = {0};
         utils_ErrorState errorState = parseCmd(
             &vwstr(&cmdString), &cmdSegments,
-            localState.alwaysBinaryUnits, pSharedState->parseType,
+            progState.alwaysBinaryUnits, pSrcState->srcType,
             &cmd
         );
         // Don't add on error
         if (errorState != UTILS_ERRORSTATE_SUCCESS) continue;
         switch (cmd.type)
         {
-            // Ignore none
-            case CMDTYPE_NONE:
-                break;
-            case CMDTYPE_SET_YES:
-                localState.allYes = cmd.info.switchValue;
-                break;
-            case CMDTYPE_SET_BINARY:
-                localState.alwaysBinaryUnits = cmd.info.switchValue;
-                break;
-            case CMDTYPE_SELECT_DISK:
-            {
-                if (!localState.allYes || cmd.info.selectDisk.type == GEO_TYPE_RAW_DISK)
-                {
-                    printf("Are you sure you want to select the disk \"%.*s\"?\n",
-                            pfSpread(&cmd.info.selectDisk.path));
-                    if (!utils_confirmation()) break;
-                }
-                bool createdNewFile = false;
-                openLockReadDisk(&localState.diskInfo,
-                                cmdInfoSelectDiskReleasePath(&cmd.info),
-                                &createdNewFile);
-                if (createdNewFile)
-                    printf("Created disk \"%s\"\n", string8NT(&localState.diskInfo.path));
-                else
-                {
-                    const char* schemeText = NULL;
-                    if (localState.diskInfo.scheme.type == SCHEME_TYPE_MBR) schemeText = "MBR";
-                                                                        else schemeText = "GPT";
-                    printf(
-                        "Opened disk \"%s\":\n"
-                        "  - Size: %llu bytes\n"
-                        "  - Sector size: %llu\n"
-                        "  - Alignment: %llu\n"
-                        "  - Scheme: %s\n"
-                        "\n", string8NT(&localState.diskInfo.path),
-                        localState.diskInfo.geometry.data.raw.size,
-                        localState.diskInfo.geometry.data.raw.sectorSize,
-                        localState.diskInfo.geometry.data.raw.alignment,
-                        schemeText
-                    );
-                }
-            }
-                break;
-            case CMDTYPE_SAVE:
-            {
-                bool yesSavePlz = false;
-                if (localState.allYes && localState.diskInfo.geometry.type != GEO_TYPE_RAW_DISK)
-                    yesSavePlz = true;
-                else
-                {
-                    printf("Are you sure you want to save these changes?\n");
-                    yesSavePlz = utils_confirmation();
-                }
-                // Apply commands
-                if (yesSavePlz)
-                {
-                    for (size_t i = 0; i < dcmdSize(&localState.commands); i++)
-                    {
-                        WriteCmdInfo info = {
-                            .pCmd = &at(&localState.commands, i),
-                            .pDiskInfo = &localState.diskInfo,
-                            // THESE TWO MUST BE CHANGED LATER TO DEPEND ON STATE
-                            .selectedScheme = localState.diskInfo.scheme.type,
-                            .partNum = 1
-                        };
-                        if (writeCmd(&info) != UTILS_ERRORSTATE_SUCCESS)
-                        {
-                            // Don't exit on error for terminal line-by-line input
-                            if (pSharedState->parseType == PARSETYPE_TERMINAL_LINES) break;
-                            else exit(EXIT_FAILURE);
-                        }
-                    }
-                    dcmdClear(&localState.commands); // Clear commands for next collection
-                }
-            }
-                break;
-            case CMDTYPE_EXIT:
-            {
-                if (localState.diskInfo.handle != UTILS_HANDLE_NONE
-                && !dcmdEmpty(&localState.commands))
-                {
-                    printf("warning: you have unsaved changes,"
-                        " are you sure you want to exit the program?\n");
-                    bool conf = utils_confirmation();
-                    if (conf) fretvoid;
-                }
-                else fretvoid;
-            }
-                break;
-            case CMDTYPE_HELP:
-            {
-                utils_help();
-            }
-                break;
-        // Apply-level types (an edit command passed later to applyCmd e.g. CMDTYPE_EDIT_DISK)
+        // Ignore null
+        case CMDTYPE_NULL:
+            /**/
+            break;
+        case CMDTYPE_SET_YES:
+            progState.allYes = cmd.info.switchValue;
+            break;
+        case CMDTYPE_SET_BINARY:
+            progState.alwaysBinaryUnits = cmd.info.switchValue;
+            break;
+        case CMDTYPE_SAVE:
+            cmdSave(&progState, pSrcState);
+            break;
+        case CMDTYPE_EXIT:
+            if (cmdExit(&progState)) fretvoid;
+            break;
+        case CMDTYPE_HELP:
+            utils_help();
+            break;
+        case CMDTYPE_VERSION:
+            utils_version();
+            break;
+        case CMDTYPE_SELECT_DISK:
+            cmdSelectDisk(&progState, &cmd.info);
+            break;
+        // Disk-operating types
         default:
         {
-            if (localState.diskInfo.handle != UTILS_HANDLE_NONE)
+            if (progState.diskInfo.handle == UTILS_SYSHANDLE_NONE)
             {
-                // Validate edits relative to current state
-                //   and change state according to edits
-                if (cmd.type == CMDTYPE_EDIT_DISK)
-                {
-                    //
-                    //
-                    //
-                    //
-                    //
-                }
-                dcmdAppendR(&localState.commands, &cmd);
+                fprintf(stderr, "invalid command (no currently selected disk)\n");
+                break;
             }
-            else fprintf(stderr, "invalid command (no currently selected disk)\n");
-        }
-            break;
+            switch (cmd.type)
+            {
+            case CMDTYPE_EDIT_DISK:
+                cmdEditDisk(&progState, &cmd.info);
+                break;
+            default:
+            {
+                fprintf(stderr, "unprogrammed command (%u) given to %s\n",
+                                cmd.type, __func__);
+                exit(EXIT_FAILURE);
+            } break;
+            }
+            dcmdAppendR(&progState.commands, &cmd);
+        } break;
         }
     }
 end:
     string8Free(&cmdString);
     dviewFree(&cmdSegments);
-    dcmdFree(&localState.commands);
+    dcmdFree(&progState.commands);
 }

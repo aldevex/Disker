@@ -2,7 +2,6 @@
 
 uint32_t utils_calcGPTCRC32(const void* data, size_t length)
 {
-    // This function is AI slop code idk if it's good or bad
     static uint32_t table[256];
     static bool initialized = false;
 

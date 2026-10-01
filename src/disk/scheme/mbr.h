@@ -8,12 +8,14 @@
 
 typedef enum mbr_BootIndicator
 {
+    MBR_BOOTINDICATOR_NULL = 0,
     MBR_BOOTINDICATOR_INACTIVE = 0x0,
     MBR_BOOTINDICATOR_ACTIVE = 0x80
 } mbr_BootIndicator;
 
 typedef enum mbr_PartitionType
 {
+    MBR_PARTITIONTYPE_NULL = 0,
     MBR_PARTITIONTYPE_NONE = 0x00, // Unused / Empty
 
     MBR_PARTITIONTYPE_FAT32_LBA = 0x0C, // FAT32 (LBA addressing)

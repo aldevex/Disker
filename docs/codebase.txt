@@ -12,19 +12,19 @@ Codebase explanation (src/):
 
 # Utility (utils/):
     - "utils.h": Includes all utility code.
-    - Other files are self explanatory, system-specific implementations in "ssimp/".
+    - Other files are self explanatory, system-specific implementations are in "ssimp/".
 
 # Disk and disk image focused code (disk/):
 Disk or image file geometry (geo/):
-    - "geo.hpp": Includes file format enum & geometry variant structure.
-    - "raw.hpp": Code for raw disk images and real disks.
+    - "geo.h": Includes file format enum & geometry variant structure.
+    - "raw.h": Code for raw disk images and real disks.
 Disk schemes (scheme/):
-    - "scheme.hpp": Includes scheme enum & total scheme data structure.
-    - "mbr.hpp": MBR scheme structures.
-    - "gpt.hpp": GPT scheme structures.
+    - "scheme.h": Includes scheme enum & total scheme data structure.
+    - "mbr.h": MBR scheme structures.
+    - "gpt.h": GPT scheme structures.
 File systems (fs/):
-    - "fs.hpp": Includes file system enum & file system variant structure.
-    - "fat32.hpp": FAT32 structures.
+    - "fs.h": Includes file system enum & file system variant structure.
+    - "fat32.h": FAT32 structures.
 Total disk info collection (info.h):
     - Collection of all disk/image information
     - Disk/image read/write code
@@ -45,13 +45,16 @@ Program pipeline explanation:
 
 # TUI pipeline:
     - writeCmd runs write commands on the given disk/image blindly
-    - parseCmd validates input grammar and specified numeric and textual argument values
+    - parseCmd validates input grammar
+        and compares input to expected numeric and textual argument values
     - getRunCmds extracts commands one by one
         from direct arguments, a file, or the commandline,
         then validates them relative to the current program state,
         then either apply the current command to the state,
         or save it for writing later on a "save" command,
         or do both, depending on the command type.
+        The function must also open and lock given files
+        directly after each command for later successful writes
 
 # GUI pipeline:
     - writeCmd runs write commands on the given disk/image blindly

@@ -461,7 +461,7 @@ static inline _mem_FUNC_ATTRIB Type viewPrefix##Last(const viewName* pView)\
 {\
     return *(Type*)_memAt(&pView->_generic, pView->_count -1, sizeof(Type));\
 }\
-static inline _mem_FUNC_ATTRIB bool viewPrefix##NT(const viewName* pView)\
+static inline _mem_FUNC_ATTRIB const Type* viewPrefix##NT(const viewName* pView)\
 {\
     if (!pView->_terminated)\
     {\
@@ -844,7 +844,7 @@ static inline _mem_FUNC_ATTRIB void view8TrimEnd(View8* pView)
     size_t count = 0;
     size_t wsSize = 0;
     while (count < pView->_count
-    && revIsSpacePS8(&pView->_pBuffer[count], pView->_count -count, &wsSize))
+    && revIsSpacePS8(pView->_pBuffer, pView->_count -count, &wsSize))
         count += wsSize;
     pView->_count -= count;
     if (count != 0) pView->_terminated = false;

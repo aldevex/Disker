@@ -29,9 +29,11 @@ target_sources(Disker PRIVATE
     "src/utils/tui.c"
     "src/utils/string.c"
     "src/utils/file.c"
-    "src/utils/path.c"
     "src/utils/guid.c"
-    # Disk
+    # Disk: Info
+    "src/disk/info.c"
+    # Disk: Geometry
+    "src/disk/geo/geo.c"
     # No C files yet
     # Core: Commands
     "src/core/cmds/write.c"
@@ -49,6 +51,7 @@ if(UI_TYPE STREQUAL "tui")
         "src/core/tui/entry.c"
         "src/core/tui/parse.c"
         "src/core/tui/state.c"
+        "src/core/tui/error.c"
     )
 elseif(UI_TYPE STREQUAL "gui")
     target_sources(Disker PRIVATE

@@ -1,65 +1,39 @@
 
-Finish command pipeline remake:
-- Divide the core runner run() into functions
-- Implement openLockReadImage and closeImage,
-    make the open function set disk info like alignment and stuff
-    from given instruction or something
-- Total proper EDIT_DISK command implementation
-    (Image expansion and careful minimization on changed size, etc.)
-- Add file and direct argument command parsing implementations
+Current goal:
+- Make the pipeline properly open and edit raw image files
 
 
 
-Misc:
-- Divide "disk/" files into C implementations
-- Fix string capacity includes null terminator (string core functions)
-- Add NONE to all enums and rename PATH_NONE usages to PATH_CREATABLE_FILE
-- Add real disks and .VHD
-- Validate partition, fs, and scheme structures
-- Use hash maps instead of if statement chains
-- Add more commands
-- Fix static inline problem (make a C file for fuckall)
-- Add alias help (e.g if you write "echo" it tells you use "list")
-- Add UTF-16 string copies to reduce winapi conversions
-- Add "version" command
-- Add ability to specify sparse file or not on "disk" command
-    (for both creation and already existing images)
-    (ask for confirmation if changing an already existing file)
-- Check size overflows, alignment, and sector counts
-- Add unit testing to core/ or entry/
+Delayed:
+- Pull out all ssimp into C files
+- Add endsWith method to string and view
+- Add getBackupHeader method in gpt header class
 - Make sizeToStr utility function to reverse strToSize for printing
+- Add total disk validation and read details on open/read
+- Stop assuming GEO_TYPE_RAW_IMAGE
+- Fix string capacity includes null terminator (string core functions)
+- Add UTF-16 string copies to reduce winapi conversions
+- Add real disks and .VHD
+- Add alias help (e.g if you write "echo" it tells you use "list")
+- Add all commands
 - Check invalid disk/sector sizes (that don't work with sector count or alignment)
     just give a warning, or error
-- Fix GPT and FAT32 code
-- Add getBackupHeader method in gpt header class
-- Add more instructions
-- Test and fix argument parsing for terminal line and files
+- Improve path type function
+- Add GPT and FAT32 support
+- Add environment variable support
 - Add total UTF-8 and UTF-16 validation logic in _stringUTF8to16 and _stringUTF16to8
-- Add path validation to normal file R/W functions
-- Make PartitionInfo struct work well for both MBR and GPT formats
-- copy() methods for GPT structures, to copy directly from sectors and validate crc32 and general data
-- Add MBR and GPT partition methods to get PartitionInfo struct
-- Add fs structures (VBR, FSInfo, and FAT)
-- Make getPathType() check volume paths
-- Add function to convert volume path/name/letter to disk path
-- Add functions to get all volumes and partitions from disk path
-- Add windows getDiskInfo, and disk IO (with a bunch of safety measures)
-- Add more instructions
-- Add warning on exit without save
-    & on attempting to edit real disks (especially when theyre partitioned and/or have files)
-- Add way to save commands from commandline into a file for reuse
-    (remove unnecessary instructions whose subjects get overwritten after)
-- Add saving variables into Disker for quick and easy reuse
-- Add version printing
-- Add code documents, code comments, help string (both direct argument or instruction), usage.txt
 
 
 
-Major/delayed codebase changes:
+Final delayed codebase changes:
+- Add developer and user documentation, doxygen comments, full help string, usage examples
+- Polish everything
+- Add unit testing
 - Add Linux support
-- Make code work on big endian environments too
-    (almost all disk structures (partitions/file systems) are little endian by themselves
-    so youll need struct getters or swapping on RW)
+- Make code work on big endian environments
 - Add support for more image file formats and file systems
     don't make .iso files sparse because they're supposed to be filled anyway
 - Add GUI
+- Add bare metal binaries because why not
+- Make build scripts run on AND for any target
+- Add disk recovery tooling in the far future?

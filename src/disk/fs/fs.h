@@ -3,7 +3,8 @@
 
 typedef enum fs_Type
 {
-    FS_TYPE_NONE, FS_TYPE_UNKNOWN, FS_TYPE_FAT32
+    FS_TYPE_NULL, FS_TYPE_UNKNOWN,
+    FS_TYPE_FAT32
 } fs_Type;
 
 typedef struct fs_Variant

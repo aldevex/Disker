@@ -4,7 +4,7 @@
 
 typedef enum scheme_Type
 {
-    SCHEME_TYPE_NONE, SCHEME_TYPE_UNKNOWN,
+    SCHEME_TYPE_NULL, SCHEME_TYPE_UNKNOWN,
     SCHEME_TYPE_MBR, SCHEME_TYPE_GPT
 } scheme_Type;
 

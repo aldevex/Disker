@@ -6,7 +6,7 @@
 #include "../utils/utils.h"
 #include "../disk/info.h"
 
-const utils_SysHandle UTILS_HANDLE_NONE = (utils_SysHandle)INVALID_HANDLE_VALUE;
+const utils_SysHandle UTILS_SYSHANDLE_NONE = (utils_SysHandle)INVALID_HANDLE_VALUE;
 
 utils_ErrorState openLockReadDisk(DiskInfo* pDiskInfo, String8* pPath, bool* pCreatedNewFile)
 {
@@ -111,96 +111,6 @@ utils_ErrorState closeImage(DiskInfo* pDiskInfo)
     // CloseHandle(()pDiskInfo->handle);
 }
 
-utils_ErrorState utils_getFileSize(const View8* pPathView, uint64_t* pSize)
-{
-    // Get UTF-16 path
-    String16 path16 = {0};
-    bool validText = string16CopyVw8(&path16, pPathView);
-    if (!validText)
-    {
-        string16Free(&path16);
-        return UTILS_ERRORSTATE_FAILURE;
-    }
-
-    // Get file metadata
-    WIN32_FILE_ATTRIBUTE_DATA fileData;
-    if (!GetFileAttributesExW((WCHAR*)string16NT(&path16), GetFileExInfoStandard, &fileData))
-    {
-        string16Free(&path16);
-        return UTILS_ERRORSTATE_FAILURE;
-    }
-
-    // Combine 32-bit segments into a 64-bit size
-    ULARGE_INTEGER fileSize;
-    fileSize.LowPart = fileData.nFileSizeLow;
-    fileSize.HighPart = fileData.nFileSizeHigh;
-
-    // Return result
-    string16Free(&path16);
-    *pSize = fileSize.QuadPart;
-    return UTILS_ERRORSTATE_SUCCESS;
-}
-
-utils_PathType utils_getPathType(const View8* pPathView)
-{
-    if (view8Empty(pPathView)) return UTILS_PATHTYPE_INVALID;
-
-    // Check direct disk normal or extended path
-    if (view8Size(pPathView) >= 16
-    && (view8StartsWithNT(pPathView, "(\\\\.\\PhysicalDrive)")
-        || view8StartsWithNT(pPathView, "(\\\\?\\PhysicalDrive)"))
-    )
-        return UTILS_PATHTYPE_DISK;
-
-    //volume path types? i guess
-    //Volume letter "C"
-    //Volume letter path "C:\"
-    //GUID volume path "\\?\Volume{GUID}\" or "\\.\Volume{GUID}\"
-    //Volume letter path with stuff "\\.\C" or "\\?\C"
-    //a "mount point" (like "D:\someDisk\") (probably enterprise only use case):
-    //    Reparse Point: Use GetFileAttributes.
-    //    If the directory has the FILE_ATTRIBUTE_REPARSE_POINT flag,
-    //    it is either a symbolic link or a mount point.
-    // Check volume paths: "\\.\C:" or "\\.\Volume{GUID}"
-    /*
-    if (pathView.rfind(R"(\\.\)", 0) == 0 || pathView.rfind(R"(\\?\)", 0) == 0)
-    {
-        // Matches volume drive letters like "\\.\C:" or "\\.\D:"
-        if (pathView.length() == 6 && pathView[5] == ':')
-        {
-            return PathType::DiskVolume; // MAKE IT USE THE PAIR IDFK JUST FIX THIS MESS
-        }
-
-        // Matches Volume GUID paths like "\\.\Volume{...}"
-        if (pathView.find(R"(Volume{)") != std::string_view::npos)
-        {
-            return PathType::DiskVolume;
-        }
-    }
-    */
-
-    // Get UTF-16 path
-    String16 path16 = {0};
-    bool validText = string16CopyVw8(&path16, pPathView);
-    if (!validText)
-    {
-        string16Free(&path16);
-        return UTILS_PATHTYPE_INVALID;
-    }
-
-    // Query standard File System Attributes without opening a handle
-    DWORD attribs = GetFileAttributesW(string16NT(&path16));
-    string16Free(&path16);
-    // Path doesn't exist or is invalid or access is blocked
-    if (attribs == INVALID_FILE_ATTRIBUTES)
-        return UTILS_PATHTYPE_NONE;
-
-    // Directory or file path
-    if (attribs & FILE_ATTRIBUTE_DIRECTORY)
-        return UTILS_PATHTYPE_DIR;
-    else
-        return UTILS_PATHTYPE_FILE;
-}
 
 
 
@@ -320,3 +230,8 @@ utils_MSGUID utils_msguidMakeGenV4()
 //     CloseHandle(hFile);
 //     return ErrorState::Success;
 // }
+
+
+
+// Implemented in system specific implementation files
+// utils_PathType utils_getPathType(const View8* pPathView);
