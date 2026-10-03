@@ -5,7 +5,7 @@ void printInvalidCmdError(const View8* pReasonView, const View8* pSpecifiedTextV
 {
     if (srcType != SRCTYPE_TERMINAL_LINES)
     {
-        if (view8Empty(pSpecifiedTextView_optional))
+        if (pSpecifiedTextView_optional == NULL || view8Empty(pSpecifiedTextView_optional))
         {
             fprintf(stderr, "invalid command \"%.*s\" (%.*s)\n",
                     pfSpread(pCmdView), pfSpread(pReasonView));
@@ -19,7 +19,7 @@ void printInvalidCmdError(const View8* pReasonView, const View8* pSpecifiedTextV
     }
     else
     {
-        if (view8Empty(pSpecifiedTextView_optional))
+        if (pSpecifiedTextView_optional == NULL || view8Empty(pSpecifiedTextView_optional))
         {
             fprintf(stderr, "invalid command (%.*s)\n", 
                     pfSpread(pReasonView));

@@ -15,11 +15,12 @@ typedef struct ProgState
     uint64_t selectedPartNum;
     Dcmd commands; // Collection of commands to write to disk/image directly after "save"
     size_t errorCount;
+    SrcState srcState;
 } ProgState;
 
-static void getRunCmds(SrcState* pSrcState);
+static utils_ErrorState getRunCmds(ProgState* pState);
 
-extern void core(const Dview* pArgs)
+extern utils_ErrorState core(const Dview* pArgs)
 {
     // Print requested help or explain help command usage
     if (dviewSize(pArgs) == 2 && (
@@ -30,7 +31,7 @@ extern void core(const Dview* pArgs)
     ))
     {
         utils_help();
-        return;
+        return UTILS_ERRORSTATE_SUCCESS;
     }
     else utils_welcome();
 
@@ -43,32 +44,41 @@ extern void core(const Dview* pArgs)
     ))
         utils_version();
 
-    SrcState srcState = {0};
+    ProgState progState = {
+        .autoyes = false,
+        .alwaysBinaryUnits = true,
+        .diskInfo = DISKINFO_DEFAULT,
+        .selectedScheme = 0,
+        .selectedPartNum = 0,
+        .commands = {0},
+        .errorCount = 0,
+        .srcState = {0}
+    };
     Dbyte dfile = {0};
 
     // Commands via terminal (line by line)
-    if (dviewSize(pArgs) == 1) srcState.srcType = SRCTYPE_TERMINAL_LINES;
+    if (dviewSize(pArgs) == 1) progState.srcState.type = SRCTYPE_TERMINAL_LINES;
     // Commands via direct program arguments
     else if (view8StartsWithNT(&at(pArgs, 1), "-"))
     {
-        srcState.srcType = SRCTYPE_DIRECT_ARGS;
-        srcState.pArgs = pArgs;
+        progState.srcState.type = SRCTYPE_DIRECT_ARGS;
+        progState.srcState.pArgs = pArgs;
     }
     // Commands via file
     else if (dviewSize(pArgs) == 2)
     {
-        srcState.srcType = SRCTYPE_FILE;
+        progState.srcState.type = SRCTYPE_FILE;
         const View8* pPath = &at(pArgs, 1);
         // Open file
         utils_SysHandle fh = utils_openFile(pPath, (bool*)false);
         if (fh == UTILS_SYSHANDLE_NONE)
-            return;
+            return UTILS_ERRORSTATE_FAILURE;
         // Get file size
         uint64_t size = utils_getFileSize(pPath);
         if (size == UTILS_SIZESIG_NO_NUMBER)
         {
             utils_closeFile(pPath, &fh);
-            return;
+            return UTILS_ERRORSTATE_FAILURE;
         }
         // Read file
         void* pFileBuffer = NULL;
@@ -76,12 +86,12 @@ extern void core(const Dview* pArgs)
         != UTILS_ERRORSTATE_SUCCESS)
         {
             utils_closeFile(pPath, &fh);
-            return;
+            return UTILS_ERRORSTATE_FAILURE;
         }
         // Close file
         if (utils_closeFile(pPath, &fh)
         != UTILS_ERRORSTATE_SUCCESS)
-            return;
+            return UTILS_ERRORSTATE_FAILURE;
         // Adopt data into darray
         dbyteAdoptPS(&dfile, (uint8_t**)&pFileBuffer, size);
     }
@@ -96,9 +106,10 @@ extern void core(const Dview* pArgs)
         exit(EXIT_FAILURE);
     }
 
-    getRunCmds(&srcState);
+    utils_ErrorState es = getRunCmds(&progState);
 
     dbyteFree(&dfile);
+    return es;
 }
 
 
@@ -144,14 +155,25 @@ static void _cutCmdTextCore(const View8* pSrc, Dview* pSegViews)
 }
 
 // Takes terminal input and outputs command string and clean segments
+// Returns false when reaching when terminal input gets closed
 // String and darray 100% managed by the function except freeing them
-static void getCleanTerminalText(String8* pBuffer, Dview* pSegViews)
+static bool getCleanTerminalText(String8* pBuffer, Dview* pSegViews)
 {
     printf("Disker> ");
-    utils_getTerminalLine(pBuffer);
-    // Clear previous segments and append segment views
-    dviewClear(pSegViews);
-    _cutCmdTextCore(&vwstr(pBuffer), pSegViews);
+    utils_ErrorState terminalFuckedStatus = utils_getTerminalLine(pBuffer);
+    if (terminalFuckedStatus == UTILS_ERRORSTATE_SUCCESS)
+    {
+        // Clear previous segments and append segment views
+        dviewClear(pSegViews);
+        _cutCmdTextCore(&vwstr(pBuffer), pSegViews);
+        return true;
+    }
+    else
+    {
+        // utils_getTerminalLine will free pBuffer;
+        dviewFree(pSegViews);
+        return false;
+    }
 }
 
 // Takes file and outputs command string and clean segments
@@ -273,18 +295,17 @@ static bool getCleanArgsText(SrcState* pSrcState, String8* pBuffer, Dview* pSegV
 // String and darray 100% managed by the function except freeing them
 static bool getCmdText(SrcState* pSrcState, String8* pBuffer, Dview* pSegmentViews)
 {
-    switch (pSrcState->srcType)
+    switch (pSrcState->type)
     {
     case SRCTYPE_TERMINAL_LINES:
-        getCleanTerminalText(pBuffer, pSegmentViews);
-        return true;
+        return getCleanTerminalText(pBuffer, pSegmentViews);
     case SRCTYPE_DIRECT_ARGS:
         return getCleanArgsText(pSrcState, pBuffer, pSegmentViews);
     case SRCTYPE_FILE:
         return getCleanFileText(pSrcState, pBuffer, pSegmentViews);
     default:
         fprintf(stderr, "unprogrammed pSrcState->srcType (%u) given to %s\n",
-                        pSrcState->srcType, __func__);
+                        pSrcState->type, __func__);
         exit(EXIT_FAILURE);
     }
     return true; // Gotta put this or compiler will crash out 🙀
@@ -292,17 +313,36 @@ static bool getCmdText(SrcState* pSrcState, String8* pBuffer, Dview* pSegmentVie
 
 
 
-static void cmdSave(ProgState* pState, const SrcState* pSrcState)
+static void cmdSave(ProgState* pState, const View8* pCmdView)
 {
+    // Don't save if no commands
+    if (dcmdEmpty(&pState->commands))
+    {
+        printInvalidCmdError(&vw("no commands to save"), &vw(""),
+                            pCmdView, pState->srcState.type);
+        pState->errorCount++;
+        return;
+    }
+    // Don't save if there are errors from file or program args
+    if (pState->srcState.type != SRCTYPE_TERMINAL_LINES && pState->errorCount > 0)
+    {
+        printInvalidCmdError(&vw("couldn't save erroneous commands"), &vw(""),
+                            pCmdView, pState->srcState.type);
+        // No need to count this ig,
+        //   afterall count exists for useful error messages, this is obvious
+        // pState->errorCount++; 
+        return;
+    }
+    // Confirm save operation
     bool yesSavePlz = false;
-    if (pState->autoyes && pState->diskInfo.geometry.type != GEO_TYPE_RAW_DISK)
+    if (pState->autoyes && pState->diskInfo.og.format.type != DF_TYPE_RAW_DISK)
         yesSavePlz = true;
     else
     {
-        printf("Are you sure you want to save these changes?\n");
+        printf("are you sure you want to save these changes?\n");
         yesSavePlz = utils_confirmation();
     }
-    // Apply commands
+    // Apply saved commands
     if (yesSavePlz)
     {
         for (size_t i = 0; i < dcmdSize(&pState->commands); i++)
@@ -310,7 +350,7 @@ static void cmdSave(ProgState* pState, const SrcState* pSrcState)
             WriteCmdInfo info = {
                 .pCmd = &at(&pState->commands, i),
                 .pDiskInfo = &pState->diskInfo,
-                .selectedScheme = pState->diskInfo.scheme.type,
+                .selectedScheme = pState->diskInfo.og.scheme.type,
                 .selectedPartNum = 1
             };
             // if (at(&pState->commands, i).type == CMDTYPE_SELECT_SCHEME)
@@ -318,30 +358,11 @@ static void cmdSave(ProgState* pState, const SrcState* pSrcState)
             // if (at(&pState->commands, i).type == CMDTYPE_SELECT_PART)
             //     info.selectedPartNum = 
             if (writeCmd(&info) != UTILS_ERRORSTATE_SUCCESS)
-            {
-                // Don't exit on error for terminal line-by-line input
-                if (pSrcState->srcType == SRCTYPE_TERMINAL_LINES) break; // Breaks loop NOT THE SWITCH
-                else exit(EXIT_FAILURE);
-            }
+                break;
         }
-        dcmdClear(&pState->commands); // Clear commands for next collection
+        // Clear commands for next collection
+        dcmdClear(&pState->commands);
     }
-}
-
-static void cmdClose(ProgState* pState)
-{
-    if (!pState->autoyes
-    && pState->diskInfo.handle != UTILS_SYSHANDLE_NONE
-    && !dcmdEmpty(&pState->commands))
-    {
-        printf("warning: you have unsaved changes,"
-            " are you sure you want to close the selected disk?\n");
-        if (!utils_confirmation()) return;
-    }
-    dcmdClear(&pState->commands);
-    diskInfoCloseReset(&pState->diskInfo);
-    pState->selectedScheme = SCHEME_TYPE_NULL;
-    pState->selectedPartNum = 0;
 }
 
 // Returns true on exit confirmation
@@ -358,78 +379,148 @@ static bool cmdExit(ProgState* pState)
     else return true;
 }
 
+static void cmdCls(ProgState* pState, const View8* pCmdView)
+{
+    if (pState->srcState.type != SRCTYPE_TERMINAL_LINES)
+    {
+        printInvalidCmdError(&vw("command may only be used in terminal lines input"), &vw(""),
+                            pCmdView, pState->srcState.type);
+        pState->errorCount++;
+        return;
+    }
+    if (!pState->autoyes
+    && !dcmdEmpty(&pState->commands))
+    {
+        printf("are you sure you want to clear the screen?\n");
+        if (!utils_confirmation()) return;
+    }
+    printf("\033[H\033[J");
+}
+
+static void cmdClose(ProgState* pState, const View8* pCmdView)
+{
+    if (pState->diskInfo.handle == UTILS_SYSHANDLE_NONE)
+    {
+        printInvalidCmdError(&vw("no selected disk to close"), &vw(""),
+                            pCmdView, pState->srcState.type);
+        pState->errorCount++;
+        return;
+    }
+    if (!pState->autoyes && !dcmdEmpty(&pState->commands))
+    {
+        printf("warning: you have unsaved changes,"
+            " are you sure you want to close the selected disk?\n");
+        if (!utils_confirmation()) return;
+    }
+    diskInfoCloseReset(&pState->diskInfo);
+    pState->selectedScheme = SCHEME_TYPE_NULL;
+    pState->selectedPartNum = 0;
+    dcmdClear(&pState->commands);
+}
+
 static void cmdSelectDisk(ProgState* pState, CmdInfo* pInfo)
 {
-    if (!pState->autoyes || pInfo->selectDisk.type == GEO_TYPE_RAW_DISK)
+    // Get confirmation
+    if (!pState->autoyes || pInfo->selectDisk.type == DF_TYPE_RAW_DISK)
     {
-        printf("Are you sure you want to select the disk \"%s\"?\n",
+        printf("are you sure you want to select the disk \"%s\"?\n",
                 view8NT(&pInfo->selectDisk.path));
         if (!utils_confirmation()) return;
     }
+    // Open, lock, & read the disk/image
     bool createdNewFile = false;
-    if (diskInfoOpenRead(cmdInfoSelectDiskReleasePath(pInfo), &pState->diskInfo, &createdNewFile)
-        != UTILS_ERRORSTATE_SUCCESS) return;
+    if (diskInfoOpenRead(cmdInfoSelectDiskReleasePath(pInfo),
+                        pInfo->selectDisk.rawImgSectorSize, pInfo->selectDisk.rawImgAlignment,
+                        &pState->diskInfo, &createdNewFile)
+    != UTILS_ERRORSTATE_SUCCESS)
+    {
+        pState->errorCount++;
+        return;
+    }
+    // Clear previous commands
+    dcmdClear(&pState->commands);
+    // Print disk details
     if (createdNewFile)
         printf("Created disk \"%s\"\n", string8NT(&pState->diskInfo.path));
     else
     {
         const char* schemeText = NULL;
-        if (pState->diskInfo.scheme.type == SCHEME_TYPE_MBR) schemeText = "MBR";
-                                                            else schemeText = "GPT";
-        printf(
-            "Opened disk \"%s\":\n"
-            "  - Size: %llu bytes\n"
-            "  - Sector size: %llu\n"
-            "  - Alignment: %llu\n"
-            "  - Scheme: %s\n"
-            "\n", string8NT(&pState->diskInfo.path),
-            pState->diskInfo.geometry.data.raw.size,
-            pState->diskInfo.geometry.data.raw.sectorSize,
-            pState->diskInfo.geometry.data.raw.alignment,
-            schemeText
-        );
+        switch (pState->diskInfo.og.scheme.type)
+        {
+        case SCHEME_TYPE_MBR:
+            schemeText = "MBR";
+            break;
+        case SCHEME_TYPE_GPT:
+            schemeText = "GPT";
+            break;
+        case SCHEME_TYPE_UNKNOWN:
+            schemeText = "Unknown";
+            break;
+        case SCHEME_TYPE_NULL:
+            schemeText = "None";
+            break;
+        }
+        printf("opened disk \"%s\":\n", string8NT(&pState->diskInfo.path));
+        utils_printSize(stdout, "  - size: ", pState->diskInfo.og.format.data.raw.size, "\n");
+        utils_printSize(stdout, "  - sector size: ", pState->diskInfo.og.format.data.raw.sectorSize, "\n");
+        utils_printSize(stdout, "  - alignment: ", pState->diskInfo.og.format.data.raw.alignment, "\n");
+        printf("  - scheme: %s\n", schemeText);
     }
 }
 
-static void cmdEditDisk(ProgState* pState, const CmdInfo* pInfo)
+static void cmdEditDisk(ProgState* pState, const CmdInfo* pInfo, const View8* pCmdView)
 {
-    // Validate edits relative to current state
-    //   and change state according to edits
-    //
-    //
-    //
+    // e.g. disk size 40GiB sectsize 4096B align 1MiB  scheme GPT parts 4 sparse f
+    // Set size (e.g. size 40GiB)
+    if (pInfo->editDisk.size != UTILS_SIZESIG_NO_NUMBER)
+    {
+        // Real disk
+        if (pState->diskInfo.og.format.type == DF_TYPE_RAW_DISK)
+        {
+            printInvalidCmdError(&vw("it's not possible to alter the size of a real disk"), &vw(""),
+                                pCmdView, pState->srcState.type);
+            pState->errorCount++;
+            return;
+        }
+        // Shrink
+        if (pInfo->editDisk.size < pState->diskInfo.og.format.data.raw.size)
+        {
+            printInvalidCmdError(&vw("Disker cannot shrink down raw image files"), &vw(""),
+                                pCmdView, pState->srcState.type);
+            pState->errorCount++;
+            return;
+        }
+        // Extend
+        else
+        {
+            pState->diskInfo.target.format.data.raw.size = pInfo->editDisk.size;
+        }
+    }
 }
 
-static void getRunCmds(SrcState* pSrcState)
+static utils_ErrorState getRunCmds(ProgState* pState)
 {
-    ProgState progState = {
-        .autoyes = false,
-        .alwaysBinaryUnits = true,
-        .diskInfo = DISKINFO_DEFAULT,
-        .selectedScheme = 0,
-        .selectedPartNum = 0,
-        .commands = {0},
-        .errorCount = 0
-    };
+    // Command text only needed here to print errors,
+    //   writeCmd doesn't print command text on failure.
     String8 cmdString = {0};
     Dview cmdSegments = {0};
     while (true)
     {
         // 16 errors max from file or direct args
-        // if (pSrcState->srcType != SRCTYPE_TERMINAL_LINES && progState.errorCount > 16)
-        //     fretvoid;
-        if (!getCmdText(pSrcState, &cmdString, &cmdSegments))
+        if (pState->srcState.type != SRCTYPE_TERMINAL_LINES && pState->errorCount > 16)
+            fretvoid;
+        if (!getCmdText(&pState->srcState, &cmdString, &cmdSegments))
             fretvoid;
         Cmd cmd = {0};
         utils_ErrorState errorState = parseCmd(
             &vwstr(&cmdString), &cmdSegments,
-            progState.alwaysBinaryUnits, pSrcState->srcType,
+            pState->alwaysBinaryUnits, pState->srcState.type,
             &cmd
         );
         // Don't add on error
         if (errorState != UTILS_ERRORSTATE_SUCCESS)
         {
-            // progState.errorCount++;
+            pState->errorCount++;
             continue;
         }
         switch (cmd.type)
@@ -439,19 +530,16 @@ static void getRunCmds(SrcState* pSrcState)
             /**/
             break;
         case CMDTYPE_SET_YES:
-            progState.autoyes = cmd.info.switchValue;
+            pState->autoyes = cmd.info.switchValue;
             break;
         case CMDTYPE_SET_BINARY:
-            progState.alwaysBinaryUnits = cmd.info.switchValue;
+            pState->alwaysBinaryUnits = cmd.info.switchValue;
             break;
         case CMDTYPE_SAVE:
-            cmdSave(&progState, pSrcState);
-            break;
-        case CMDTYPE_CLOSE:
-            cmdClose(&progState);
+            cmdSave(pState, &vwstr(&cmdString));
             break;
         case CMDTYPE_EXIT:
-            if (cmdExit(&progState)) fretvoid;
+            if (cmdExit(pState)) fretvoid;
             break;
         case CMDTYPE_HELP:
             utils_help();
@@ -459,21 +547,29 @@ static void getRunCmds(SrcState* pSrcState)
         case CMDTYPE_VERSION:
             utils_version();
             break;
+        case CMDTYPE_CLS:
+            cmdCls(pState, &vwstr(&cmdString));
+            break;
+        case CMDTYPE_CLOSE:
+            cmdClose(pState, &vwstr(&cmdString));
+            break;
         case CMDTYPE_SELECT_DISK:
-            cmdSelectDisk(&progState, &cmd.info);
+            cmdSelectDisk(pState, &cmd.info);
             break;
         // Disk-operating types
         default:
         {
-            if (progState.diskInfo.handle == UTILS_SYSHANDLE_NONE)
+            if (pState->diskInfo.handle == UTILS_SYSHANDLE_NONE)
             {
-                fprintf(stderr, "invalid command (no currently selected disk)\n");
-                break;
+                printInvalidCmdError(&vw("no selected disk"), &vw(""),
+                                    &vwstr(&cmdString), pState->srcState.type);
+                pState->errorCount++;
+                break; // Break the switch statement
             }
             switch (cmd.type)
             {
             case CMDTYPE_EDIT_DISK:
-                cmdEditDisk(&progState, &cmd.info);
+                cmdEditDisk(pState, &cmd.info, &vwstr(&cmdString));
                 break;
             default:
             {
@@ -482,12 +578,13 @@ static void getRunCmds(SrcState* pSrcState)
                 exit(EXIT_FAILURE);
             } break;
             }
-            dcmdAppendR(&progState.commands, &cmd);
+            dcmdAppendR(&pState->commands, &cmd);
         } break;
         }
     }
 end:
     string8Free(&cmdString);
     dviewFree(&cmdSegments);
-    dcmdFree(&progState.commands);
+    dcmdFree(&pState->commands);
+    return (pState->errorCount == 0)? UTILS_ERRORSTATE_SUCCESS : UTILS_ERRORSTATE_FAILURE;
 }

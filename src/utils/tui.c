@@ -25,7 +25,7 @@ void utils_help()
 
 
 
-void utils_getTerminalLine(String8* pBuffer)
+utils_ErrorState utils_getTerminalLine(String8* pBuffer)
 {
     // Clear previous buffer
     string8Clear(pBuffer);
@@ -64,14 +64,14 @@ void utils_getTerminalLine(String8* pBuffer)
                 break;
             }
         }
-        // Failure
+        // Failure (terminal closed)
         else
         {
             string8Free(pBuffer);
-            fprintf(stderr, "\ninput stream has been interrupted\n");
-            exit(EXIT_FAILURE);
+            return UTILS_ERRORSTATE_FAILURE;
         }
     }
+    return UTILS_ERRORSTATE_SUCCESS;
 }
 
 bool utils_confirmation()

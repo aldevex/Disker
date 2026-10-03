@@ -18,7 +18,6 @@ typedef enum CmdType
     CMDTYPE_SET_BINARY,
     
     CMDTYPE_SAVE,
-    CMDTYPE_CLOSE,
     CMDTYPE_EXIT,
 
     // CMDTYPE_UNDO,
@@ -26,11 +25,13 @@ typedef enum CmdType
 
     CMDTYPE_HELP,
     CMDTYPE_VERSION,
+    CMDTYPE_CLS,
     // CMDTYPE_LIST_BOOT,
     // CMDTYPE_LIST_PART,
     // CMDTYPE_LIST_DISK,
     // CMDTYPE_LIST_SYS,
 
+    CMDTYPE_CLOSE,
     CMDTYPE_SELECT_DISK,
 
     // Disk-operating command types (affect program state AND reach to writeCmd after "save" command):
@@ -60,13 +61,15 @@ typedef enum CmdType
 typedef struct CmdInfoSelectDisk
 {
     View8 path;
-    geo_Type type;
+    df_Type type;
+    uint64_t rawImgSectorSize, rawImgAlignment;
 } CmdInfoSelectDisk;
 
 typedef struct CmdInfoEditDisk
 {
     uint64_t size, sectorSize, alignment, partCount;
     scheme_Type scheme;
+    bool sparse;
 } CmdInfoEditDisk;
 
 typedef struct CmdInfo

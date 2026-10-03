@@ -1,22 +1,21 @@
 
-Current goals:
-- Add error limit (add progState.errorCount++; everywhere)
-- Return EXIT_FAILURE on user-error failures
-- Save command string in Cmd struct for error printing outside parseCmd()
-- Add undo/redo stack
-- Add edit raw image files command
+# Current goals:
+Add full high quality raw image MBR R/W:
+    - Complete full cmdEditDisk() and writeEditDisk() implementation
 
-Delayed:
-- Add opsec mode easter egg
-- Pull out all ssimp into C files
+Misc:
+- Add more alert messages after operations,
+    not just on selection, and even if autoyes is on
+- Add finer sparse/no sparse control
+- Add raw image GPT R/W
+- Add raw image FAT32 R/W
+- Add actual disk support
+- Add a second image file format support
 - Add endsWith method to string and view
 - Add getBackupHeader method in gpt header class
-- Make sizeToStr utility function to reverse strToSize for printing
-- Add total disk validation and read details on open/read
 - Stop assuming GEO_TYPE_RAW_IMAGE
 - Fix string capacity includes null terminator (string core functions)
 - Add UTF-16 string copies to reduce winapi conversions
-- Add real disks and .VHD
 - Add alias help (e.g if you write "echo" it tells you use "list")
 - Add all commands
 - Check invalid disk/sector sizes (that don't work with sector count or alignment)
@@ -29,14 +28,16 @@ Delayed:
 
 
 Final delayed codebase changes:
+- Unify error printing, functions outside parseCmd don't specify error text
+- Add colouring to TUI IO
 - Add developer and user documentation, doxygen comments, full help string, usage examples
 - Polish everything
 - Add unit testing
+- Make build scripts run on AND for any target
 - Add Linux support
 - Make code work on big endian environments
 - Add support for more image file formats and file systems
     don't make .iso files sparse because they're supposed to be filled anyway
 - Add GUI
 - Add bare metal binaries because why not
-- Make build scripts run on AND for any target
 - Add disk recovery tooling in the far future?

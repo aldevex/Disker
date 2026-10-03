@@ -11,6 +11,10 @@ select D
 # Asks for admin/sudo if not admin (coding this will be difficult)
 # Prints info about the disk containing "D:/" partition 🤑
 
+# If you were to select an image file that doesn't save sector size and alignment (e.g. ".img"),
+#   you can specify sector size and alignment on "select"
+# select x.img sectsize 4096 align 1MiB
+
 # You can select a specific shceme to operate on if you need a hybrid scheme layout for some reason:
 # select scheme gpt/mbr
 

@@ -67,8 +67,14 @@ typedef struct mbr_Data
     mbr_PartitionEntry partitionTable[4];
     uint16_t signature; // 0xAA55
 } mbr_Data;
+
+// static const byte_t _mbr_DEFAULT_BYTES[] = {
+// #embed "./default_mbr.bin"
+// };
+
+// #define MBR_DATA_DEFAULT _mbr_DEFAULT_BYTES
+
 /*
-    MBRData() = default;
     MBRData(const uint8_t* pCode446, const std::vector<PartitionEntry>& partitionEntries4max)
     {
         if (pCode446 != nullptr) memcpy(code, pCode446, 446);

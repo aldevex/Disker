@@ -25,6 +25,7 @@ target_sources(Disker PRIVATE
     # Memory
     "src/mem/core_imp.c"
     # Utils
+    "src/utils/base.c"
     "src/utils/checksum.c"
     "src/utils/tui.c"
     "src/utils/string.c"
@@ -33,16 +34,16 @@ target_sources(Disker PRIVATE
     # Disk: Info
     "src/disk/info.c"
     # Disk: Geometry
-    "src/disk/geo/geo.c"
+    "src/disk/format/format.c"
     # No C files yet
     # Core: Commands
     "src/core/cmds/write.c"
 )
     # System-specific implementation
 if(PLATFORM STREQUAL "windows")
-    target_sources(Disker PRIVATE "src/ssimp/windows.c" "src/res/windows.rc")
+    target_sources(Disker PRIVATE "src/res/windows.rc")
 else()
-    target_sources(Disker PRIVATE "src/ssimp/linux.c")
+    target_sources(Disker PRIVATE "src/res/whatever.idk")
 endif()
 
     # Core: UI-specific

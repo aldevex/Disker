@@ -6,14 +6,15 @@
 #include "utils/file.h"
 #include "./info.h"
 
-utils_ErrorState diskInfoOpenRead(String8* pPath, DiskInfo* pDiskInfo, bool* pCreatedNewFile)
+utils_ErrorState diskInfoOpenRead(String8* pPath, uint64_t rawImgSectorSize, uint64_t rawImgAlignment,
+                                    DiskInfo* pDiskInfo, bool* pCreatedNewFile)
 {
-    // Check if previous data isn't cleared
+    // Check if got uncleared disk info
     if (pDiskInfo->handle != UTILS_SYSHANDLE_NONE)
     {
-        fprintf(stderr, "written disk info object given to %s (path = %s)\n",
-                        __func__, string8NT(pPath));
-        exit(EXIT_FAILURE);
+        fprintf(stderr, "failed to open already opened disk \"%s\"\n",
+                        string8NT(pPath));
+        return UTILS_ERRORSTATE_FAILURE;
     }
     // Open and lock disk/image
     utils_SysHandle handle = utils_openFile(&vwstr(pPath), pCreatedNewFile);
@@ -22,19 +23,34 @@ utils_ErrorState diskInfoOpenRead(String8* pPath, DiskInfo* pDiskInfo, bool* pCr
     // Get size
     const uint64_t size = utils_getFileSize(&vwstr(pPath));
     if (size == UTILS_SIZESIG_NO_NUMBER)
-        return UTILS_ERRORSTATE_FAILURE;
-    // Read MBR
-    if (size < sizeof(mbr_Data))
     {
-        pDiskInfo->scheme.type = SCHEME_TYPE_UNKNOWN;
+        utils_closeFile(&vwstr(pPath), &handle);
+        return UTILS_ERRORSTATE_FAILURE;
+    }
+    // Set size
+    pDiskInfo->og.format.data.raw = raw_dataMake(size, rawImgSectorSize, rawImgSectorSize, rawImgAlignment);
+
+    // Set MBR
+    if (size == 0)
+    {
+        pDiskInfo->og.scheme.type = SCHEME_TYPE_NULL;
+    }
+    else if (size < sizeof(mbr_Data))
+    {
+        pDiskInfo->og.scheme.type = SCHEME_TYPE_UNKNOWN;
     }
     else
     {
-        void* pBuffer = &pDiskInfo->scheme.mbrData;
-        utils_readFile(&vwstr(pPath), handle, 0, sizeof(mbr_Data), &pBuffer);
-        pDiskInfo->scheme.type = SCHEME_TYPE_MBR;
+        mbr_Data* pMbrBuffer = &pDiskInfo->og.scheme.mbrData;
+        utils_readFile(&vwstr(pPath), handle, 0, sizeof(mbr_Data), (void**)&pMbrBuffer);
+        if (pMbrBuffer->signature != 0xAA55) pDiskInfo->og.scheme.type = SCHEME_TYPE_UNKNOWN;
+        else pDiskInfo->og.scheme.type = SCHEME_TYPE_MBR;
     }
-    // Adopt path
+
+    // Copy original disk into target
+    pDiskInfo->target = pDiskInfo->og;
+    // Set handle and adopt path
+    pDiskInfo->handle = handle;
     pDiskInfo->path = *pPath;
     *pPath = (String8){0};
     // Return success
@@ -55,18 +71,16 @@ utils_ErrorState diskInfoCloseReset(DiskInfo* pDiskInfo)
 utils_ErrorState diskInfoWrite(DiskInfo* pDiskInfo)
 {
     const View8 path = vwstr(&pDiskInfo->path);
-    // Get size
+    // Get disk size
     const uint64_t size = utils_getFileSize(&path);
-    if (size == UTILS_SIZESIG_NO_NUMBER)
-        return UTILS_ERRORSTATE_FAILURE;
+    if (size == UTILS_SIZESIG_NO_NUMBER) return UTILS_ERRORSTATE_FAILURE;
+
     // Write MBR
-    if (size < sizeof(mbr_Data))
-        return UTILS_ERRORSTATE_SUCCESS;
-    else
     {
-        void* pBuffer = &pDiskInfo->scheme.mbrData;
+        void* pBuffer = &pDiskInfo->target.scheme.mbrData;
         utils_writeFile(&path, pDiskInfo->handle, 0, sizeof(mbr_Data), pBuffer);
     }
+    
     // Return success
     return UTILS_ERRORSTATE_SUCCESS;
 }

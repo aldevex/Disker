@@ -3,50 +3,50 @@ Codebase explanation (src/):
 # Memory (mem/):
     - "darray.h": Dynamic array code.
     - "string.h": Dynamic string and string view code.
-    - "mem.h": Includes the aforementioned code + some helper macros.
-    - "core.h": Core memory operations.
-    - "core_imp.c": Implementation of core.
+    - "mem.h": Includes the aforementioned files + some helper macros.
+    - "core.h" & "core_imp.c": Core memory operations.
 
-# System-specific implementations (ssimp/):
-"windows.c": Windows implementation.
+# Generic utility code (utils/):
+    Contents are self explanatory.
 
-# Utility (utils/):
-    - "utils.h": Includes all utility code.
-    - Other files are self explanatory, system-specific implementations are in "ssimp/".
+# Production program resources (res/):
+    Pictures and other resources for the production program to use.
 
 # Disk and disk image focused code (disk/):
-Disk or image file geometry (geo/):
-    - "geo.h": Includes file format enum & geometry variant structure.
+Disk and various image file formats (format/):
+    - "format.h" & "format.c": Includes file format enum & format variant structure.
     - "raw.h": Code for raw disk images and real disks.
 Disk schemes (scheme/):
     - "scheme.h": Includes scheme enum & total scheme data structure.
     - "mbr.h": MBR scheme structures.
+    - "mbr_default.nasm": Default MBR sector assembly code.
+    - "mbr_default.bin": Default MBR sector binary (from assembly).
     - "gpt.h": GPT scheme structures.
 File systems (fs/):
     - "fs.h": Includes file system enum & file system variant structure.
     - "fat32.h": FAT32 structures.
-Total disk info collection (info.h):
-    - Collection of all disk/image information
-    - Disk/image read/write code
+Total disk info collection ("info.h" & "info.c"):
+    Collection of all disk/image information to be used in program state.
 
 # Core (core/):
 Operation commands (cmds/):
     - "cmds.h": Command structures and function declarations.
-    - "write.c": Write-command writing implementation.
+    - "write.c": Implementation for writing commands to disk.
 TUI core (tui/):
-    - "entry.c": Entry point.
+    - "entry.c": Entry point. Also the exit point if exiting without critical errors.
     - "state.c": Core program state logic.
     - "parse.c": Command parsing implementation.
-    - "tui.h": External declarations for state and parsing.
+    - "error.c": TUI error printing implementation.
+    - "tui.h": External declarations of TUI functions used outside their C files.
 
 
 
 Program pipeline explanation:
 
 # TUI pipeline:
-    - writeCmd runs write commands on the given disk/image blindly
+    - writeCmd runs write commands on the given disk/image blindly.
     - parseCmd validates input grammar
-        and compares input to expected numeric and textual argument values
+        and compares input to expected numeric and textual argument values.
     - getRunCmds extracts commands one by one
         from direct arguments, a file, or the commandline,
         then validates them relative to the current program state,
@@ -54,7 +54,7 @@ Program pipeline explanation:
         or save it for writing later on a "save" command,
         or do both, depending on the command type.
         The function must also open and lock given files
-        directly after each command for later successful writes
+        directly after each command for later successful writes.
 
 # GUI pipeline:
-    - writeCmd runs write commands on the given disk/image blindly
+    Not implemented yet.

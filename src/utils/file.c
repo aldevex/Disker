@@ -1,8 +1,38 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#ifdef _WIN32
 #include <windows.h>
+#endif
 #include "./file.h"
+
+utils_FileType utils_getFileType(const View8* pPath)
+{
+    // Linear search macro
+    #define check(retVal, ...) do {\
+        static const UTF8_t* ARR_##retVal[] = {__VA_ARGS__};\
+        for (size_t i = 0; i < lenof(ARR_##retVal); i++)\
+            if (utils_compareLowNT(&ext, ARR_##retVal[i]))\
+                return retVal;\
+        } while (0)
+    // Check if extension exists
+    const size_t extI = view8RevFindNT(pPath, ".");
+    const size_t afterExtI = extI +1;
+    const size_t fwSlashI = view8RevFindNT(pPath, "/");
+    const size_t bwSlashI = view8RevFindNT(pPath, "\\");
+    if (extI == STRING_NF || extI == (view8Size(pPath) -1)
+    || (fwSlashI != STRING_NF && fwSlashI > extI)
+    || (bwSlashI != STRING_NF && bwSlashI > extI))
+        return UTILS_FILETYPE_NOEXT;
+    // Get extension
+    View8 ext = view8SubStr(pPath, afterExtI, view8Size(pPath) -afterExtI);
+    // Check registered extension lists
+    check(UTILS_FILETYPE_RAW, "bin", "img", "raw");
+    // Unknown extension
+    return UTILS_FILETYPE_UNKNOWN;
+    // Undefine search macro
+    #undef check
+}
 
 #define isSeparator(c) (c == '\\' || c == '/')
 
@@ -66,36 +96,6 @@ utils_PathType utils_getPathType(const View8* pPath)
 
     // Inexistent path
     return UTILS_PATHTYPE_MAYBE_CREATABLE;
-}
-#else
-    #error "unimplemented"
-#endif
-
-utils_FileType utils_getFileType(const View8* pPath)
-{
-    // Linear search macro
-    #define check(retVal, ...) do {\
-        static const UTF8_t* ARR_##retVal[] = {__VA_ARGS__};\
-        for (size_t i = 0; i < lenof(ARR_##retVal); i++)\
-            if (utils_compareLowNT(&ext, ARR_##retVal[i]))\
-                return retVal;\
-        } while (0)
-    // Check if extension exists
-    size_t extI = view8RevFindNT(pPath, ".");
-    size_t fwSlashI = view8RevFindNT(pPath, "/");
-    size_t bwSlashI = view8RevFindNT(pPath, "\\");
-    if (extI == STRING_NF
-    || (fwSlashI != STRING_NF && fwSlashI > extI)
-    || (bwSlashI != STRING_NF && bwSlashI > extI))
-        return UTILS_FILETYPE_NOEXT;
-    // Get extension
-    View8 ext = view8SubStr(pPath, extI, view8Size(pPath) -extI);
-    // Check registered extension lists
-    check(UTILS_FILETYPE_RAW, "bin", "img", "raw");
-    // Unknown extension
-    return UTILS_FILETYPE_UNKNOWN;
-    // Undefine search macro
-    #undef check
 }
 
 uint64_t utils_getFileSize(const View8* pPath)
@@ -194,10 +194,10 @@ utils_ErrorState utils_closeFile(const View8* pPath, utils_SysHandle* pHandle)
 }
 
 utils_ErrorState utils_readFile(const View8* pPath, utils_SysHandle handle,
-                                uint64_t offset, uint64_t count, void** ppBuffer)
+                                uint64_t offset, uint64_t count, void** pPtrBuffer)
 {
     bool ownsBuffer = false;
-    uint8_t* pBuffer = *ppBuffer;
+    uint8_t* pBuffer = *pPtrBuffer;
     // Allocate buffer if null
     if (pBuffer == NULL)
     {
@@ -236,14 +236,14 @@ utils_ErrorState utils_readFile(const View8* pPath, utils_SysHandle handle,
         return UTILS_ERRORSTATE_FAILURE;
     }
 
-    if (ownsBuffer) *ppBuffer = pBuffer;
+    if (ownsBuffer) *pPtrBuffer = pBuffer;
     return UTILS_ERRORSTATE_SUCCESS;
 }
 
 utils_ErrorState utils_writeFile(const View8* pPath, utils_SysHandle handle,
                                         uint64_t offset, uint64_t count, const void* pBuffer)
 {
-    // Sset file pointer to offset
+    // Set file pointer to offset
     if (SetFilePointerEx((HANDLE)handle, (LARGE_INTEGER ){.QuadPart = offset}, NULL, FILE_BEGIN)
     == INVALID_SET_FILE_POINTER)
     {
@@ -270,3 +270,18 @@ utils_ErrorState utils_writeFile(const View8* pPath, utils_SysHandle handle,
 
     return UTILS_ERRORSTATE_SUCCESS;
 }
+
+utils_ErrorState utils_extendFile(const View8* pPath, utils_SysHandle handle,
+                                    uint64_t count)
+{
+    LARGE_INTEGER apiSize = {.QuadPart = count};
+    BOOL succeeded = SetFilePointerEx(handle, apiSize, NULL, FILE_END);
+    if (succeeded) succeeded = SetEndOfFile(handle);
+    return (succeeded != 0)? UTILS_ERRORSTATE_SUCCESS : UTILS_ERRORSTATE_FAILURE;
+}
+
+
+
+#else
+    #error "unimplemented"
+#endif

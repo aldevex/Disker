@@ -12,5 +12,5 @@ Diagnostics:
 CompileFlags:
     Add: [
         -x, c, -std=c17, -Wno-microsoft-goto, -Wno-pragma-pack,
-        -Wno-missing-braces, -D_CRT_SECURE_NO_WARNINGS,
+        -Wno-missing-braces, -D_CRT_SECURE_NO_WARNINGS, -Wno-c23-extensions
     ]

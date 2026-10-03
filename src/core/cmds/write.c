@@ -1,36 +1,16 @@
 #include "./cmds.h"
 
-
-
-utils_ErrorState writeEditDisk(WriteCmdInfo* pInfo)
+utils_ErrorState writeEditDisk(WriteCmdInfo* pWrtieInfo)
 {
-    CmdInfoEditDisk cmdInfo = pInfo->pCmd->info.editDisk;
-    DiskInfo diskInfo = *pInfo->pDiskInfo;
-    if (cmdInfo.size != UTILS_SIZESIG_NO_NUMBER
-    && cmdInfo.size != diskInfo.geometry.data.raw.size)
+    CmdInfoEditDisk* pCmdInfo = &pWrtieInfo->pCmd->info.editDisk;
+    DiskInfo* pDiskInfo = pWrtieInfo->pDiskInfo;
+    // Extend file size (shrinking results in error in state validation)
+    if (pCmdInfo->size != UTILS_SIZESIG_NO_NUMBER
+    && pCmdInfo->size != pDiskInfo->og.format.data.raw.size)
     {
-        // Extend file size
-        if (cmdInfo.size > diskInfo.geometry.data.raw.size)
-        {
-            //utils_extendFile();
-        }
-        // Shrink file size
-        else
-        {
-
-        }
+        return utils_extendFile(&vwstr(&pDiskInfo->path), pDiskInfo->handle,
+                            pCmdInfo->size -pDiskInfo->og.format.data.raw.size);
     }
-    if (cmdInfo.sectorSize != UTILS_SIZESIG_NO_NUMBER)
-        diskInfo.geometry.data.raw.sectorSize = cmdInfo.sectorSize;
-    //if (cmdInfo.scheme
-    /*
-    //
-    //
-    //
-    //
-    //
-    */
-    printf("ALERT: CMDTYPE_EDIT_DISK hasn't been programmed yet\n");
     return UTILS_ERRORSTATE_SUCCESS;
 }
 

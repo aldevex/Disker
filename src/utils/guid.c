@@ -1,4 +1,8 @@
 #include "./guid.h"
+#ifdef _WIN32
+#include <windows.h>
+#include <objbase.h> // NEEDED FOR CoCreateGuid() | YOU GOTTA LINK "ole32.dll"
+#endif
 
 // Returns true if given GUID view is valid
 bool utils_validateGUID(const View8* pView)
@@ -10,8 +14,30 @@ bool utils_validateGUID(const View8* pView)
     else return true;
 }
 
-// Create MSGUID instance from random bits (UUIDv4)
-extern utils_MSGUID utils_msguidMakeGenV4();
+#ifdef _WIN32
+utils_MSGUID utils_msguidMakeGenV4()
+{
+    // UUIDv4 totally random bits
+    GUID apiGUID;
+    HRESULT hr = CoCreateGuid(&apiGUID);
+
+    if (SUCCEEDED(hr))
+    {
+        utils_MSGUID result = (utils_MSGUID){
+            .data1 = apiGUID.Data1,
+            .data2 = apiGUID.Data2,
+            .data3 = apiGUID.Data3,
+        };
+        memcpy(result.data4, apiGUID.Data4, 8);
+        return result;
+    }
+    else
+    {
+        fprintf(stderr, "function %s failed to generate random GUID\n", __func__);
+        exit(EXIT_FAILURE);
+    }
+}
+#endif
 
 // Create MSGUID instance from GUID string view
 utils_MSGUID utils_msguidMakeCopyVw(const View8* pView)
