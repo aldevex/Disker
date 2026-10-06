@@ -11,10 +11,12 @@
 // Sector 1: Primary GPT Header
 // Sector 2-33: GPT Partition Entry Array
 // Sector 34-(N-34): Usable LBA space:
-//   Sector 34-2047: Alignment Gap (for performance)
+//   Sector 34-2047: Alignment Gap
 //   Sector 2048+: Data
 // Sector (N-33)-(N-2): Backup GPT Partition Entry Array
 // Sector (N-1): Backup GPT Header
+
+// UEFI spec says minimum partition entries is 128
 
 // Partition type GUIDs
 #define GPT_PTGUID_ESP (utils_msguidMakeCopyNT("C12A7328-F81F-11D2-BA4B-00A0C93EC93B"))
@@ -22,21 +24,23 @@
 
 // Partition Entry Attribute Flags
 typedef uint64_t gpt_PEAFlags;
-// Critical system-required partition
-#define GPT_PEAFLAG_PLATFORM_REQUIRED ((gpt_PEAFlags)(1ULL << 0))
-// EFI ignoes partition for bootloader search
+// Required by platform (OS or such)
+#define GPT_PEAFLAG_REQUIRED ((gpt_PEAFlags)(1ULL << 0))
+// UEFI won't create EFI_BLOCK_IO_PROTOCOL device
 #define GPT_PEAFLAG_EFI_IGNORE ((gpt_PEAFlags)(1ULL << 1))
-// Legacy BIOS bootable (for partition with BIOS stage 2 code)
-#define GPT_PEAFLAG_ACTIVE ((gpt_PEAFlags)(1ULL << 2))
+// Legacy BIOS bootable (GPT partition containing post-MBR stage 2 code)
+#define GPT_PEAFLAG_BIOS_BOOTABLE ((gpt_PEAFlags)(1ULL << 2))
+// Bits 3-47 are for future GPT expansion
+// Bits 48-63 are partition-type-vendor specific attributes
 
 typedef struct gpt_PartitionEntry
 {
     utils_MSGUID partitionTypeGUID;
     utils_MSGUID uniquePartitionGUID;
-    uint64_t firstLBA;
-    uint64_t lastLBA;
-    uint64_t attributeFlags;
-    uint16_t partitionName16[36]; // Null-terminated, spec allows 36 characters without null but that's dangerous
+    uint64_t startingLBA;
+    uint64_t endingLBA;
+    uint64_t attributes;
+    UTF16_t partitionName16[36]; // Null-terminated
 } gpt_PartitionEntry;
 /*
     GPTPartitionEntry() = default;
@@ -63,19 +67,19 @@ typedef struct gpt_PartitionEntry
 
 typedef struct gpt_Header
 {
-    uint64_t signature; // Must be set to "EFI PART"
-    uint32_t revision; // GPT version 1.0
+    uint64_t signature; // Must be set to "EFI PART" (0x5452415020494645)
+    uint32_t revision; // Header version 1.0 (0x00010000)
     uint32_t headerSize; // 92 bytes
     uint32_t headerCRC32; // Must be set to CRC32 checksum (HAS TO BE 0 INITIALLY)
     uint32_t reserved;
     uint64_t myLBA; // Must be set to header LBA
     uint64_t alternateLBA; // Must be set to header opposite LBA (backup for og, og for backup)
-    uint64_t firstUsableLBA; // Must be set to first LBA usable by partitions
-    uint64_t lastUsableLBA; // Must be set to (Total -34)
+    uint64_t firstUsableLBA; // Must be set to first LBA usable by partitions (after GPT structures)
+    uint64_t lastUsableLBA; // Must be set to (total sectors) -(sectors used by GPT structures)
     utils_MSGUID diskGUID; // Must be set to a random GUID (must be identical in backup header)
     uint64_t partitionEntryLBA; // Must be set to parition entry array start
     uint32_t numberOfPartitionEntries; // Commonly 128 but can be anything
-    uint32_t sizeOfPartitionEntry; // Can actually be >128 but that's for niche custom usage
+    uint32_t sizeOfPartitionEntry; // Size of a partition entry in bytes. Value can be = (128 x 2^n) where n >= 0
     uint32_t partitionEntryArrayCRC32; // Must be set to partiton array CRC32 checksum
 } gpt_Header;
 

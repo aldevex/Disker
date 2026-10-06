@@ -20,22 +20,21 @@ Disk schemes (scheme/):
     - "scheme.h": Includes scheme enum & total scheme data structure.
     - "mbr.h": MBR scheme structures.
     - "mbr_default.nasm": Default MBR sector assembly code.
-    - "mbr_default.bin": Default MBR sector binary (from assembly).
+    - "mbr_default.h": Embedded default MBR sector binary from assembly.
     - "gpt.h": GPT scheme structures.
 File systems (fs/):
     - "fs.h": Includes file system enum & file system variant structure.
-    - "fat32.h": FAT32 structures.
+    - "fat.h": FAT structures.
 Total disk info collection ("info.h" & "info.c"):
     Collection of all disk/image information to be used in program state.
 
 # Core (core/):
 Operation commands (cmds/):
-    - "cmds.h": Command structures and function declarations.
-    - "write.c": Implementation for writing commands to disk.
 TUI core (tui/):
     - "entry.c": Entry point. Also the exit point if exiting without critical errors.
     - "state.c": Core program state logic.
     - "parse.c": Command parsing implementation.
+    - "cmds.h": Command structures and function declarations.
     - "error.c": TUI error printing implementation.
     - "tui.h": External declarations of TUI functions used outside their C files.
 
@@ -44,17 +43,15 @@ TUI core (tui/):
 Program pipeline explanation:
 
 # TUI pipeline:
-    - writeCmd runs write commands on the given disk/image blindly.
-    - parseCmd validates input grammar
-        and compares input to expected numeric and textual argument values.
+    - parseCmd validates input grammar and validates input arguments
+        according to expected numeric and textual values.
     - getRunCmds extracts commands one by one
         from direct arguments, a file, or the commandline,
         then validates them relative to the current program state,
-        then either apply the current command to the state,
-        or save it for writing later on a "save" command,
-        or do both, depending on the command type.
-        The function must also open and lock given files
-        directly after each command for later successful writes.
+        then apply the command to the program state and/or target disk state object,
+        it actually saves the target disk object to the disk/image on "save" commands.
+        The function must also open and lock input files
+        directly after each command for a predictable successful save.
 
 # GUI pipeline:
     Not implemented yet.

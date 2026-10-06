@@ -133,19 +133,23 @@ void utils_printSize(FILE* const stream, const char* const prefix, uint64_t size
 #define PEBI_FACTOR (uint64_t)(1ULL << 50)
 #define EXBI_FACTOR (uint64_t)(1ULL << 60)
 
-    // SizeSig enum
-    if (size >= UTILS_SIZESIG_LEASTERROR)
+    // Prefix
+    fprintf(stream, "%s", prefix);
+
+    // No number
+    if (size == UTILS_SIZESIG_NO_NUMBER)
+    {
+        fprintf(stream, "Null");
+    }
+    // Other part of the SizeSig enum
+    else if (size >= UTILS_SIZESIG_LEASTERROR)
     {
         fprintf(stderr, "size = %llu >= UTILS_SIZESIG_LEASTERROR given to %s\n",
                         size, __func__);
         exit(EXIT_FAILURE);
     }
-
-    // Prefix
-    fprintf(stream, "%s", prefix);
-
     // EiB
-    if (size >= EXBI_FACTOR)
+    else if (size >= EXBI_FACTOR)
         fprintf(stream, "%.2fEiB (%.2fPiB, %llu bytes)",
                 (double)size / EXBI_FACTOR, (double)size / PEBI_FACTOR, size);
     // PiB

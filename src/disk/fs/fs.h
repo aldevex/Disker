@@ -1,5 +1,5 @@
 #pragma once
-#include "./fat32.h"
+#include "./fat.h"
 
 typedef enum fs_Type
 {
@@ -11,8 +11,7 @@ typedef struct fs_Variant
 {
     fs_Type type;
     union {
-        void* placeholdertonotgeterrors;
-        //fat32_Data fat32;
+        fat_Variant fat;
     } data;
 } fs_Variant;
 

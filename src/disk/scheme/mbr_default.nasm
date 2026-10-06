@@ -33,11 +33,13 @@ START:
 
 message db 'MBR Bootloader: No proper bootloader code has been set. Halting...', 13, 10, 0
 
+db "This MBR has been written by Disker :)", 13, 10, 0
+
 ; Bootloader limit before other MBR data
 times 440 - ($ - $$) db 0
 ; Unique disk signature (used mostly by windows)
 dd 0
-; Write protection ({0x0 for writable, 0x5A5A for write-protected)
+; Legacy write protection ({0x0 for writable, 0x5A5A for write-protected)
 ;   source: "en.wikipedia.org/wiki/Master_boot_record"
 ;   and the UEFI spec literally just says "Unknown"
 dw 0

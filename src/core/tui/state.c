@@ -2,20 +2,18 @@
 #include <stdio.h>
 #include "../../mem/mem.h"
 #include "../../utils/utils.h"
-#include "../cmds/cmds.h"
+#include "./cmds.h"
 #include "./tui.h"
 #include "utils/tui.h"
 
 typedef struct ProgState
 {
-    bool autoyes;
-    bool alwaysBinaryUnits;
-    DiskInfo diskInfo;
-    scheme_Type selectedScheme;
-    uint64_t selectedPartNum;
-    Dcmd commands; // Collection of commands to write to disk/image directly after "save"
-    size_t errorCount;
     SrcState srcState;
+    bool autoYes;
+    bool alwaysBinaryUnits;
+
+    DiskInfo diskInfo;
+    size_t errorCount;
 } ProgState;
 
 static utils_ErrorState getRunCmds(ProgState* pState);
@@ -45,14 +43,12 @@ extern utils_ErrorState core(const Dview* pArgs)
         utils_version();
 
     ProgState progState = {
-        .autoyes = false,
+        .srcState = {0},
+        .autoYes = false,
         .alwaysBinaryUnits = true,
+
         .diskInfo = DISKINFO_DEFAULT,
-        .selectedScheme = 0,
-        .selectedPartNum = 0,
-        .commands = {0},
         .errorCount = 0,
-        .srcState = {0}
     };
     Dbyte dfile = {0};
 
@@ -74,8 +70,8 @@ extern utils_ErrorState core(const Dview* pArgs)
         if (fh == UTILS_SYSHANDLE_NONE)
             return UTILS_ERRORSTATE_FAILURE;
         // Get file size
-        uint64_t size = utils_getFileSize(pPath);
-        if (size == UTILS_SIZESIG_NO_NUMBER)
+        uint64_t size = 0;
+        if (utils_getFileInfo(pPath, fh, &size, NULL) != UTILS_ERRORSTATE_SUCCESS)
         {
             utils_closeFile(pPath, &fh);
             return UTILS_ERRORSTATE_FAILURE;
@@ -100,8 +96,7 @@ extern utils_ErrorState core(const Dview* pArgs)
     {
         fprintf(stderr,
             "invalid arguments. expected \"<FILE NAME>\""
-                " or \"-<command> <arguments> -[command] [arguments]...\"\n"
-            "use \"help\" for help"
+                " or \"-<command 1> -[command 2]...\"\n"
         );
         exit(EXIT_FAILURE);
     }
@@ -311,72 +306,24 @@ static bool getCmdText(SrcState* pSrcState, String8* pBuffer, Dview* pSegmentVie
     return true; // Gotta put this or compiler will crash out 🙀
 }
 
-
-
-static void cmdSave(ProgState* pState, const View8* pCmdView)
+static void cmdSetYes(ProgState* pState, const CmdInfo* pInfo)
 {
-    // Don't save if no commands
-    if (dcmdEmpty(&pState->commands))
-    {
-        printInvalidCmdError(&vw("no commands to save"), &vw(""),
-                            pCmdView, pState->srcState.type);
-        pState->errorCount++;
-        return;
-    }
-    // Don't save if there are errors from file or program args
-    if (pState->srcState.type != SRCTYPE_TERMINAL_LINES && pState->errorCount > 0)
-    {
-        printInvalidCmdError(&vw("couldn't save erroneous commands"), &vw(""),
-                            pCmdView, pState->srcState.type);
-        // No need to count this ig,
-        //   afterall count exists for useful error messages, this is obvious
-        // pState->errorCount++; 
-        return;
-    }
-    // Confirm save operation
-    bool yesSavePlz = false;
-    if (pState->autoyes && pState->diskInfo.og.format.type != DF_TYPE_RAW_DISK)
-        yesSavePlz = true;
-    else
-    {
-        printf("are you sure you want to save these changes?\n");
-        yesSavePlz = utils_confirmation();
-    }
-    // Apply saved commands
-    if (yesSavePlz)
-    {
-        for (size_t i = 0; i < dcmdSize(&pState->commands); i++)
-        {
-            WriteCmdInfo info = {
-                .pCmd = &at(&pState->commands, i),
-                .pDiskInfo = &pState->diskInfo,
-                .selectedScheme = pState->diskInfo.og.scheme.type,
-                .selectedPartNum = 1
-            };
-            // if (at(&pState->commands, i).type == CMDTYPE_SELECT_SCHEME)
-            //     info.selectedScheme = 
-            // if (at(&pState->commands, i).type == CMDTYPE_SELECT_PART)
-            //     info.selectedPartNum = 
-            if (writeCmd(&info) != UTILS_ERRORSTATE_SUCCESS)
-                break;
-        }
-        // Clear commands for next collection
-        dcmdClear(&pState->commands);
-    }
+    pState->autoYes = pInfo->switchValue;
 }
 
-// Returns true on exit confirmation
-static bool cmdExit(ProgState* pState)
+static void cmdSetBinary(ProgState* pState, const CmdInfo* pInfo)
 {
-    if (!pState->autoyes
-    && pState->diskInfo.handle != UTILS_SYSHANDLE_NONE
-    && !dcmdEmpty(&pState->commands))
-    {
-        printf("warning: you have unsaved changes,"
-            " are you sure you want to exit the program?\n");
-        return utils_confirmation();
-    }
-    else return true;
+    pState->alwaysBinaryUnits = pInfo->switchValue;
+}
+
+static void cmdHelp()
+{
+    utils_help();
+}
+
+static void cmdVersion()
+{
+    utils_version();
 }
 
 static void cmdCls(ProgState* pState, const View8* pCmdView)
@@ -388,8 +335,8 @@ static void cmdCls(ProgState* pState, const View8* pCmdView)
         pState->errorCount++;
         return;
     }
-    if (!pState->autoyes
-    && !dcmdEmpty(&pState->commands))
+    if (!pState->autoYes
+    && pState->diskInfo.editedAnything)
     {
         printf("are you sure you want to clear the screen?\n");
         if (!utils_confirmation()) return;
@@ -397,51 +344,39 @@ static void cmdCls(ProgState* pState, const View8* pCmdView)
     printf("\033[H\033[J");
 }
 
-static void cmdClose(ProgState* pState, const View8* pCmdView)
-{
-    if (pState->diskInfo.handle == UTILS_SYSHANDLE_NONE)
-    {
-        printInvalidCmdError(&vw("no selected disk to close"), &vw(""),
-                            pCmdView, pState->srcState.type);
-        pState->errorCount++;
-        return;
-    }
-    if (!pState->autoyes && !dcmdEmpty(&pState->commands))
-    {
-        printf("warning: you have unsaved changes,"
-            " are you sure you want to close the selected disk?\n");
-        if (!utils_confirmation()) return;
-    }
-    diskInfoCloseReset(&pState->diskInfo);
-    pState->selectedScheme = SCHEME_TYPE_NULL;
-    pState->selectedPartNum = 0;
-    dcmdClear(&pState->commands);
-}
-
 static void cmdSelectDisk(ProgState* pState, CmdInfo* pInfo)
 {
-    // Get confirmation
-    if (!pState->autoyes || pInfo->selectDisk.type == DF_TYPE_RAW_DISK)
+    // Get confirmation if there are unsaved commands
+    if (pState->diskInfo.editedAnything)
+    {
+        printf("you have unsaved changes,"
+            " are you sure you want to select the disk \"%s\"?\n",
+            view8NT(&pInfo->selectDisk.path));
+        if (!utils_confirmation()) return;
+    }
+    // Get confirmation if the selected disk is real
+    else if (pInfo->selectDisk.type == DF_TYPE_RAW_DISK)
     {
         printf("are you sure you want to select the disk \"%s\"?\n",
                 view8NT(&pInfo->selectDisk.path));
         if (!utils_confirmation()) return;
     }
+    // Close and reset previous disk object
+    if (pState->diskInfo.handle != UTILS_SYSHANDLE_NONE)
+        diskInfoCloseReset(&pState->diskInfo);
     // Open, lock, & read the disk/image
     bool createdNewFile = false;
     if (diskInfoOpenRead(cmdInfoSelectDiskReleasePath(pInfo),
-                        pInfo->selectDisk.rawImgSectorSize, pInfo->selectDisk.rawImgAlignment,
+                        pInfo->selectDisk.rawImgSectorSize,
                         &pState->diskInfo, &createdNewFile)
     != UTILS_ERRORSTATE_SUCCESS)
     {
         pState->errorCount++;
         return;
     }
-    // Clear previous commands
-    dcmdClear(&pState->commands);
     // Print disk details
     if (createdNewFile)
-        printf("Created disk \"%s\"\n", string8NT(&pState->diskInfo.path));
+        printf("Created empty disk image \"%s\"\n", string8NT(&pState->diskInfo.path));
     else
     {
         const char* schemeText = NULL;
@@ -465,13 +400,96 @@ static void cmdSelectDisk(ProgState* pState, CmdInfo* pInfo)
         utils_printSize(stdout, "  - sector size: ", pState->diskInfo.og.format.data.raw.sectorSize, "\n");
         utils_printSize(stdout, "  - alignment: ", pState->diskInfo.og.format.data.raw.alignment, "\n");
         printf("  - scheme: %s\n", schemeText);
+        printf("  - partitions: not programmed yet lol\n");
     }
+}
+
+static void cmdSave(ProgState* pState, const View8* pCmdView)
+{
+    // Don't save if no commands
+    if (!pState->diskInfo.editedAnything)
+    {
+        printInvalidCmdError(&vw("no commands to save"), &vw(""),
+                            pCmdView, pState->srcState.type);
+        pState->errorCount++;
+        return;
+    }
+    // Don't save if there are errors from file or program args
+    if (pState->srcState.type != SRCTYPE_TERMINAL_LINES && pState->errorCount > 0)
+    {
+        printInvalidCmdError(&vw("couldn't save erroneous commands"), &vw(""),
+                            pCmdView, pState->srcState.type);
+        // No need to count this ig,
+        //   afterall count exists for useful error messages, this is obvious
+        // pState->errorCount++; 
+        return;
+    }
+    // Confirm save operation
+    bool yesSavePlz = false;
+    if (pState->autoYes && pState->diskInfo.og.format.type != DF_TYPE_RAW_DISK)
+        yesSavePlz = true;
+    else
+    {
+        printf("are you sure you want to save these changes?\n");
+        yesSavePlz = utils_confirmation();
+    }
+    // Apply saved commands
+    if (yesSavePlz)
+    {
+        // Also resets the "diskInfo.editedX" booleans
+        if (diskInfoWrite(&pState->diskInfo) != UTILS_ERRORSTATE_SUCCESS)
+            pState->errorCount++;
+        printf("Saved operations to disk \"%s\"\n", string8NT(&pState->diskInfo.path));
+    }
+}
+
+static void cmdClose(ProgState* pState, const View8* pCmdView)
+{
+    if (pState->diskInfo.handle == UTILS_SYSHANDLE_NONE)
+    {
+        printInvalidCmdError(&vw("no selected disk to close"), &vw(""),
+                            pCmdView, pState->srcState.type);
+        pState->errorCount++;
+        return;
+    }
+    if ((!pState->autoYes || pState->diskInfo.og.format.type == DF_TYPE_RAW_DISK)
+    && pState->diskInfo.editedAnything)
+    {
+        printf("you have unsaved changes,"
+            " are you sure you want to close the selected disk?\n");
+        if (!utils_confirmation()) return;
+    }
+    // Adopt path string
+    String8 adoptedPath = pState->diskInfo.path;
+    pState->diskInfo.path = (String8){0};
+    // Close & reset disk object
+    utils_ErrorState es = diskInfoCloseReset(&pState->diskInfo);
+    if (es == UTILS_ERRORSTATE_SUCCESS)
+    {
+        printf("Closed disk \"%s\"\n", string8NT(&adoptedPath));
+        string8Free(&adoptedPath);
+    }
+    else pState->diskInfo.path = adoptedPath;
+}
+
+// Returns true on exit confirmation
+static bool cmdExit(ProgState* pState)
+{
+    if ((!pState->autoYes || pState->diskInfo.og.format.type == DF_TYPE_RAW_DISK)
+    && pState->diskInfo.editedAnything)
+    {
+        printf("you have unsaved changes,"
+            " are you sure you want to exit the program?\n");
+        return utils_confirmation();
+    }
+    else return true;
 }
 
 static void cmdEditDisk(ProgState* pState, const CmdInfo* pInfo, const View8* pCmdView)
 {
-    // e.g. disk size 40GiB sectsize 4096B align 1MiB  scheme GPT parts 4 sparse f
-    // Set size (e.g. size 40GiB)
+    // e.g. disk size 40GiB sectsize 4096B align 1MiB  scheme GPT parts 256 sparse false
+    // Validation first before editing disk object
+    // Validate size
     if (pInfo->editDisk.size != UTILS_SIZESIG_NO_NUMBER)
     {
         // Real disk
@@ -482,19 +500,84 @@ static void cmdEditDisk(ProgState* pState, const CmdInfo* pInfo, const View8* pC
             pState->errorCount++;
             return;
         }
-        // Shrink
-        if (pInfo->editDisk.size < pState->diskInfo.og.format.data.raw.size)
+        // Confirm image shrink operation if given target size is less than original
+        if (pInfo->editDisk.size < pState->diskInfo.og.format.data.raw.size
+        && !pState->autoYes)
         {
-            printInvalidCmdError(&vw("Disker cannot shrink down raw image files"), &vw(""),
+            printf("Disker shrinks disk images blindly, this operation may cause data loss."
+                    " are you sure you want to shrink the disk image?\n");
+            if (!utils_confirmation()) return;
+        }
+    }
+    // Validate sector size
+    if (pInfo->editDisk.sectorSize != UTILS_SIZESIG_NO_NUMBER)
+    {
+        // Real disk
+        if (pState->diskInfo.og.format.type == DF_TYPE_RAW_DISK)
+        {
+            printInvalidCmdError(&vw("it's not possible to alter the sector size of a real disk"), &vw(""),
                                 pCmdView, pState->srcState.type);
             pState->errorCount++;
             return;
         }
-        // Extend
-        else
+    }
+    // Validate sparsity
+    if (pInfo->editDisk.sparse != UTILS_TRIBOOL_NONE)
+    {
+        // Real disk
+        if (pState->diskInfo.og.format.type == DF_TYPE_RAW_DISK)
         {
-            pState->diskInfo.target.format.data.raw.size = pInfo->editDisk.size;
+            printInvalidCmdError(&vw("it's not possible to alter sparsity for a real disk"), &vw(""),
+                                pCmdView, pState->srcState.type);
+            pState->errorCount++;
+            return;
         }
+    }
+    // Now set target disk object after validation
+    // Set size
+    if (pInfo->editDisk.size != UTILS_SIZESIG_NO_NUMBER)
+    {
+        pState->diskInfo.target.format.data.raw.size = pInfo->editDisk.size;
+        pState->diskInfo.editedAnything = true;
+        pState->diskInfo.editedFormat = true;
+    }
+    // Set sector size
+    if (pInfo->editDisk.sectorSize != UTILS_SIZESIG_NO_NUMBER)
+    {
+        pState->diskInfo.target.format.data.raw.sectorSize = pInfo->editDisk.sectorSize;
+        pState->diskInfo.editedAnything = true;
+        pState->diskInfo.editedFormat = true;
+    }
+    // Set alignment
+    if (pInfo->editDisk.alignment != UTILS_SIZESIG_NO_NUMBER)
+    {
+        pState->diskInfo.target.format.data.raw.alignment = pInfo->editDisk.alignment;
+        pState->diskInfo.editedAnything = true;
+        pState->diskInfo.editedFormat = true;
+    }
+    // Set scheme
+    if (pInfo->editDisk.scheme != SCHEME_TYPE_NULL
+    && pInfo->editDisk.scheme != pState->diskInfo.og.scheme.type)
+    {
+        if (pInfo->editDisk.scheme == SCHEME_TYPE_MBR)
+        {
+            pState->diskInfo.target.scheme.type = SCHEME_TYPE_MBR;
+            pState->diskInfo.target.scheme.mbrData = MBR_DATA_DEFAULT;
+        }
+        pState->diskInfo.editedAnything = true;
+        pState->diskInfo.editedScheme = true;
+    }
+    // // Set partition count
+    // GPT disks only and 128 minimum because MBR always 4 bruh
+    // if (pInfo->editDisk.scheme != SCHEME_TYPE_NULL)
+    // {
+    // }
+    // Set sparse
+    if (pInfo->editDisk.sparse != UTILS_TRIBOOL_NONE)
+    {
+        pState->diskInfo.target.sparsity = (bool)pInfo->editDisk.sparse;
+        pState->diskInfo.editedAnything = true;
+        pState->diskInfo.editedSparsity = true;
     }
 }
 
@@ -529,34 +612,37 @@ static utils_ErrorState getRunCmds(ProgState* pState)
         case CMDTYPE_NULL:
             /**/
             break;
+        // Parse/creation commands (don't require a selected disk/image,
+        //                          and don't affect the disk/image after "save"):
         case CMDTYPE_SET_YES:
-            pState->autoyes = cmd.info.switchValue;
+            cmdSetYes(pState, &cmd.info);
             break;
         case CMDTYPE_SET_BINARY:
-            pState->alwaysBinaryUnits = cmd.info.switchValue;
-            break;
-        case CMDTYPE_SAVE:
-            cmdSave(pState, &vwstr(&cmdString));
-            break;
-        case CMDTYPE_EXIT:
-            if (cmdExit(pState)) fretvoid;
+            cmdSetBinary(pState, &cmd.info);
             break;
         case CMDTYPE_HELP:
-            utils_help();
+            cmdHelp();
             break;
         case CMDTYPE_VERSION:
-            utils_version();
+            cmdVersion();
             break;
         case CMDTYPE_CLS:
             cmdCls(pState, &vwstr(&cmdString));
             break;
-        case CMDTYPE_CLOSE:
-            cmdClose(pState, &vwstr(&cmdString));
-            break;
         case CMDTYPE_SELECT_DISK:
             cmdSelectDisk(pState, &cmd.info);
             break;
-        // Disk-operating types
+        case CMDTYPE_SAVE:
+            cmdSave(pState, &vwstr(&cmdString));
+            break;
+        case CMDTYPE_CLOSE:
+            cmdClose(pState, &vwstr(&cmdString));
+            break;
+        case CMDTYPE_EXIT:
+            if (cmdExit(pState)) fretvoid;
+            break;
+        // Disk-operating commands (require selected opened disk/image
+        //                          and affect the disk/image after "save"):
         default:
         {
             if (pState->diskInfo.handle == UTILS_SYSHANDLE_NONE)
@@ -564,7 +650,7 @@ static utils_ErrorState getRunCmds(ProgState* pState)
                 printInvalidCmdError(&vw("no selected disk"), &vw(""),
                                     &vwstr(&cmdString), pState->srcState.type);
                 pState->errorCount++;
-                break; // Break the switch statement
+                break; // Break the main switch statement
             }
             switch (cmd.type)
             {
@@ -578,13 +664,11 @@ static utils_ErrorState getRunCmds(ProgState* pState)
                 exit(EXIT_FAILURE);
             } break;
             }
-            dcmdAppendR(&pState->commands, &cmd);
         } break;
         }
     }
 end:
     string8Free(&cmdString);
     dviewFree(&cmdSegments);
-    dcmdFree(&pState->commands);
     return (pState->errorCount == 0)? UTILS_ERRORSTATE_SUCCESS : UTILS_ERRORSTATE_FAILURE;
 }

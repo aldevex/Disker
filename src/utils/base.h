@@ -14,3 +14,10 @@ typedef enum utils_ErrorState
 
 typedef void* utils_SysHandle;
 extern const utils_SysHandle UTILS_SYSHANDLE_NONE;
+
+typedef enum utils_Tribool
+{
+    UTILS_TRIBOOL_FALSE,
+    UTILS_TRIBOOL_TRUE,
+    UTILS_TRIBOOL_NONE,
+} utils_Tribool;

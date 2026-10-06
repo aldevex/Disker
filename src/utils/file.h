@@ -29,10 +29,6 @@ extern utils_PathType utils_getPathType(const View8* pPath);
 // Gets UTILS_PATHTYPE_DISK path from UTILS_PATHTYPE_VOLUME path
 // extern utils_ErrorState utils_getDiskPath(const View8* pSymbol, String8* pResult);
 
-// Returns UTILS_SIZESIG_NO_NUMBER on failure
-// Also prints errors
-extern uint64_t utils_getFileSize(const View8* pPath);
-
 
 
 // Opens and locks a file
@@ -54,6 +50,15 @@ extern utils_ErrorState utils_readFile(const View8* pPath, utils_SysHandle handl
 // Prints an error message on failure
 extern utils_ErrorState utils_writeFile(const View8* pPath, utils_SysHandle handle,
                                         uint64_t offset, uint64_t count, const void* pBuffer);
+
+
 // Prints an error message on failure
-extern utils_ErrorState utils_extendFile(const View8* pPath, utils_SysHandle handle,
+extern utils_ErrorState utils_getFileInfo(const View8* pPath, utils_SysHandle handle,
+                                            uint64_t* pSize, bool* pSparse_optional);
+
+// Prints an error message on failure
+extern utils_ErrorState utils_resizeFile(const View8* pPath, utils_SysHandle handle,
                                         uint64_t count);
+// Prints a warning message on failure
+extern utils_ErrorState utils_setFileSparsity(const View8* pPath, utils_SysHandle handle,
+                                        bool sparsity);

@@ -36,8 +36,6 @@ target_sources(Disker PRIVATE
     # Disk: Geometry
     "src/disk/format/format.c"
     # No C files yet
-    # Core: Commands
-    "src/core/cmds/write.c"
 )
     # System-specific implementation
 if(PLATFORM STREQUAL "windows")

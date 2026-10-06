@@ -3,7 +3,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <assert.h>
 #include "../../utils/utils.h"
+#include "./mbr_default.h"
 #pragma pack(push, 1)
 
 typedef enum mbr_BootIndicator
@@ -20,26 +22,33 @@ typedef enum mbr_PartitionType
 
     MBR_PARTITIONTYPE_FAT32_LBA = 0x0C, // FAT32 (LBA addressing)
     
-    MBR_PARTITIONTYPE_GPT_PROTECTIVE_MBR = 0xEE, // GPT Protective MBR
+    MBR_PARTITIONTYPE_GPT_PMBR = 0xEE, // GPT Protective MBR
     MBR_PARTITIONTYPE_ESP = 0xEF, // EFI System Partition (ESP)
 } mbr_PartitionType;
+
+// CHS order:
+// CHS[0]: Head (8 bits)
+// CHS[1]: Sector (6 bits 0-5), Cylinder high (2 bits 6-7)
+// CHS[2]: Cylinder low (8 bits)
+typedef struct mbr_CHS
+{
+    uint8_t head : 8;
+    uint8_t sector : 6;
+    uint8_t cylinderHigh : 2;
+    uint8_t cylinderLow : 8;
+} mbr_CHS;
+static_assert(sizeof(mbr_CHS) == 3, "mbr_CHS size isn't 3, this shouldn't be.");
 
 typedef struct mbr_PartitionEntry
 {
     uint8_t bootIndicator;
-    // CHS order:
-    // CHS[0]: Head (8 bits)
-    // CHS[1]: Sector (6 bits 0-5), Cylinder high (2 bits 6-7)
-    // CHS[2]: Cylinder low (8 bits)
-    uint8_t startingCHS[3];
+    mbr_CHS startingCHS;
     uint8_t partitionType;
-    uint8_t endingCHS[3];
+    mbr_CHS endingCHS;
     uint32_t startingLBA;
     uint32_t sectorCountLBA;
-
 } mbr_PartitionEntry;
 /*
-    PartitionEntry() = default;
     PartitionEntry(PartitionType type, bool bootable,
                     uint32_t startingLBA, uint32_t sectorCountLBA,
                     uint8_t startingSector, uint8_t startingHead, uint16_t startingCylinder,
@@ -63,16 +72,14 @@ typedef struct mbr_PartitionEntry
 */
 typedef struct mbr_Data
 {
-    uint8_t code[446];
+    uint8_t bootloader[440]; // x86 bootloader code
+    uint32_t diskSignature;
+    uint16_t legacyWriteProtection;
     mbr_PartitionEntry partitionTable[4];
     uint16_t signature; // 0xAA55
 } mbr_Data;
 
-// static const byte_t _mbr_DEFAULT_BYTES[] = {
-// #embed "./default_mbr.bin"
-// };
-
-// #define MBR_DATA_DEFAULT _mbr_DEFAULT_BYTES
+#define MBR_DATA_DEFAULT ( *((mbr_Data*)_mbr_DATA_DEFAULT_BYTES) )
 
 /*
     MBRData(const uint8_t* pCode446, const std::vector<PartitionEntry>& partitionEntries4max)

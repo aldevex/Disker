@@ -19,6 +19,8 @@ typedef struct utils_MSGUID
 extern utils_MSGUID utils_msguidMakeGenV4();
 // Create MSGUID instance from GUID string view
 extern utils_MSGUID utils_msguidMakeCopyVw(const View8* pView);
+// Create MSGUID instance from GUID C-string
+#define utils_msguidMakeCopyNT(pText) utils_msguidMakeCopyVw(&vw(pText))
 
 extern void utils_msguidToStr(const utils_MSGUID* pGUID, String8* pResult);
 extern bool utils_msguidCmp(const utils_MSGUID* pA, const utils_MSGUID* pB);

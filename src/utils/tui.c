@@ -4,13 +4,13 @@
 
 void utils_version()
 {
-    printf("Disker v0.1 (2026)\n");
+    printf("Disker v0.1.0 (WIP) (2026)\n");
 }
 
 void utils_welcome()
 {
     utils_version();
-    printf("Type \"help\" for usage guide\n");
+    printf("type \"help\" for usage guide\n");
 }
 
 void utils_help()

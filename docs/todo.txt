@@ -1,25 +1,43 @@
 
 # Current goals:
-Add full high quality raw image MBR R/W:
-    - Complete full cmdEditDisk() and writeEditDisk() implementation
+- Finalize the disk writing method, make it good
+- Add MBR partition R/W
+- Ensure everything is working correctly
+    (Disk size, sector size, alignment, scheme, partitions, sparse)
+
+
 
 Misc:
-- Add more alert messages after operations,
-    not just on selection, and even if autoyes is on
-- Add finer sparse/no sparse control
+- Add warnings even on autoyes
+- Make raw disk image selection detect sector size automatically
+    and ask or assume otherwise
+- Disallow "disk parts n" in MBR, and allow minimum 128 partitions in GPT
+- Add packparts flag to "disk" command to pack chaotic partition tables
+- Make parseCmd do some extra textual argument validation & conversion
 - Add raw image GPT R/W
 - Add raw image FAT32 R/W
 - Add actual disk support
 - Add a second image file format support
 - Add endsWith method to string and view
 - Add getBackupHeader method in gpt header class
-- Stop assuming GEO_TYPE_RAW_IMAGE
 - Fix string capacity includes null terminator (string core functions)
-- Add UTF-16 string copies to reduce winapi conversions
+- Save UTF-16 string copies to reduce winapi conversions
 - Add alias help (e.g if you write "echo" it tells you use "list")
+    A list of aliases:
+        CMDTYPE_FS_CWD, Change or show CWD (cd, pwd)
+        CMDTYPE_FS_LIST, List FSIs in the CWD (list, ls)
+        CMDTYPE_FS_TREE, List all FSIs in the CWD including nested ones (tree)
+        CMDTYPE_FS_FIND, Find a specific file (find)
+        CMDTYPE_FS_CREATE, Create an FSI (touch. mkdir, md, create, make)
+        CMDTYPE_FS_DELETE, Delete an FSI (rm, del, rmdir, rd)
+        CMDTYPE_FS_PRINT, Print the contents of a file (type, echo)
+        CMDTYPE_FS_ATTRIBUTES, Prints FSI attributes (attrib, stat)
+        CMDTYPE_FS_RENAME, Rename an FSI (ren, rename)
+        CMDTYPE_FS_COPY, Copy an FSI (copy, cp, move, mv)
 - Add all commands
 - Check invalid disk/sector sizes (that don't work with sector count or alignment)
     just give a warning, or error
+- Add clear fs command/argument or a "create" replacement to "select" for always making a new file
 - Improve path type function
 - Add GPT and FAT32 support
 - Add environment variable support
@@ -28,7 +46,7 @@ Misc:
 
 
 Final delayed codebase changes:
-- Unify error printing, functions outside parseCmd don't specify error text
+- Improve errors, functions outside parseCmd currently aren't specifying erroneous command segments
 - Add colouring to TUI IO
 - Add developer and user documentation, doxygen comments, full help string, usage examples
 - Polish everything

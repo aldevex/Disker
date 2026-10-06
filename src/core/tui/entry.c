@@ -14,9 +14,12 @@ BOOL WINAPI sigHandler(DWORD signal)
     if (signal != CTRL_C_EVENT) return false;
     
     // Reset terminal colour to default
-    printf("\033[0m");
+    const HANDLE hConOutput = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (hConOutput != INVALID_HANDLE_VALUE)
+        WriteFile(hConOutput, (const char[]){"\033[0m"}, strlen("\033[0m"), NULL, NULL);
+    // Exit
     ExitProcess(EXIT_SUCCESS);
-    return true;
+    return true; // To stop compiler errors
 }
 #endif
 

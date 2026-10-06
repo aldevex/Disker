@@ -6,36 +6,31 @@ binary # Opposite "decimal"
 
 # Select disk to operate on (via path or symbol pointing to a partition or disk or image file)
 select D
-# Program would do:
-# WARNING AAAAAAA OH MY GOOOD AAAAAAAAA YOU SELECTED A REAL DISK AA
-# Asks for admin/sudo if not admin (coding this will be difficult)
-# Prints info about the disk containing "D:/" partition 🤑
 
-# If you were to select an image file that doesn't save sector size and alignment (e.g. ".img"),
-#   you can specify sector size and alignment on "select"
-# select x.img sectsize 4096 align 1MiB
-
-# You can select a specific shceme to operate on if you need a hybrid scheme layout for some reason:
-# select scheme gpt/mbr
+# If selecting an image that doesn't save sector size (e.g. ".img"),
+#   you can specify sector size on "select"
+# select x.img sectsize 4096
 
 # Set disk layout
-disk size 40GiB sectsize 4096B align 1MiB \
-    scheme GPT parts 4 sparse f
-reserve size 8GiB # Reserve sectors at the start of disk
-part 1  spc 1  size 8GiB         fs FAT32  guid ESP
-part 2  spc 2  size 8GiB         fs exfat  guid "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"
-part 4  spc 2  clusts 1,048,576  fs FAT32  label "OS Partition"
-part 3  sects 2,097,152          fs FAT32  typeguid bdp
+disk size 32GiB sectsize 4096B align 1MiB \
+    scheme GPT parts 256 sparse false
+# Available schemes: MBR, GPT, and Hybrid
+
+# Set partitions
+part 1  size 8GiB        label "UEFI slop"       type ESP  guid "eeeeeeee-EEee-eEEe-eeFF-eeeeeefffeee" \
+            fslabel "UEFI stuff"        spc 2
+part 2  sects 2,097,152  label "OS Partition"    type FAT32
+            fslabel "Operating Zyztem"  spc 1 
+part 3  size auto        label "Data partition"  type exfat
 
 # Set MBR bootloader code
 boot mbr boot_mbr.bin
 # Also available: mbr+ (binary copied into mbr and after) and postmbr (only after mbr)
 
-# Select partition to operate on
+# Select partition to operate on in bootloader and filesystem commands
 select part 1
-
-# Can also edit selected partition by using "part" without a number:
-# part    spc 1  size 8GiB         fs FAT32  guid ESP
+# You can NOT edit selected partition by using "part" without a number:
+# 🚫🚫🚫 part    spc 1  size 8GiB  fs FAT32  guid ESP 🚫🚫🚫
 
 # Set VBR and EFI bootloader for selected partition
 boot vbr boot_vbr.bin

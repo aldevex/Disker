@@ -98,36 +98,6 @@ utils_PathType utils_getPathType(const View8* pPath)
     return UTILS_PATHTYPE_MAYBE_CREATABLE;
 }
 
-uint64_t utils_getFileSize(const View8* pPath)
-{
-    // Get UTF-16 path
-    String16 path16 = {0};
-    bool validText = string16CopyVw8(&path16, pPath);
-    if (!validText)
-    {
-        string16Free(&path16);
-        return UTILS_SIZESIG_NO_NUMBER;
-    }
-
-    // Get file metadata
-    WIN32_FILE_ATTRIBUTE_DATA fileData;
-    if (!GetFileAttributesExW((WCHAR*)string16NT(&path16), GetFileExInfoStandard, &fileData))
-    {
-        string16Free(&path16);
-        fprintf(stderr, "failed to get file size for \"%s\"\n", view8NT(pPath));
-        return UTILS_SIZESIG_NO_NUMBER;
-    }
-
-    // Combine 32-bit segments into a 64-bit size
-    ULARGE_INTEGER fileSize;
-    fileSize.LowPart = fileData.nFileSizeLow;
-    fileSize.HighPart = fileData.nFileSizeHigh;
-
-    // Return result
-    string16Free(&path16);
-    return fileSize.QuadPart;
-}
-
 
 
 utils_SysHandle utils_openFile(const View8* pPath, bool* pCreatedNewFile)
@@ -251,7 +221,7 @@ utils_ErrorState utils_writeFile(const View8* pPath, utils_SysHandle handle,
         return UTILS_ERRORSTATE_FAILURE;
     }
 
-
+    // Write Data
     DWORD bytesWritten = 0;
     if (!WriteFile(handle, pBuffer, (DWORD)count, &bytesWritten, NULL)
     || (uint64_t)bytesWritten != count)
@@ -271,13 +241,62 @@ utils_ErrorState utils_writeFile(const View8* pPath, utils_SysHandle handle,
     return UTILS_ERRORSTATE_SUCCESS;
 }
 
-utils_ErrorState utils_extendFile(const View8* pPath, utils_SysHandle handle,
+
+
+utils_ErrorState utils_getFileInfo(const View8* pPath, utils_SysHandle handle,
+                                    uint64_t* pSize, bool* pSparse_optional)
+{
+    // Get file logical size
+    FILE_STANDARD_INFO standardInfo = {0};
+    if (!GetFileInformationByHandleEx(handle, FileStandardInfo, &standardInfo, sizeof(standardInfo)))
+    {
+        fprintf(stderr, "failed to get file size for \"%s\"\n", view8NT(pPath));
+        return UTILS_ERRORSTATE_FAILURE;
+    }
+    
+    // Get file sparsity
+    FILE_BASIC_INFO basicInfo = {0};
+    if (!GetFileInformationByHandleEx(handle, FileBasicInfo, &basicInfo, sizeof(basicInfo)))
+    {
+        fprintf(stderr, "failed to get file sparsity for \"%s\"\n", view8NT(pPath));
+        return UTILS_ERRORSTATE_FAILURE;
+    }
+
+    *pSize = (uint64_t)standardInfo.EndOfFile.QuadPart;
+    if (pSparse_optional)
+        *pSparse_optional = ((basicInfo.FileAttributes & FILE_ATTRIBUTE_SPARSE_FILE) != 0);
+
+    return UTILS_ERRORSTATE_SUCCESS;
+}
+
+utils_ErrorState utils_resizeFile(const View8* pPath, utils_SysHandle handle,
                                     uint64_t count)
 {
     LARGE_INTEGER apiSize = {.QuadPart = count};
-    BOOL succeeded = SetFilePointerEx(handle, apiSize, NULL, FILE_END);
+    BOOL succeeded = SetFilePointerEx(handle, apiSize, NULL, FILE_BEGIN);
     if (succeeded) succeeded = SetEndOfFile(handle);
-    return (succeeded != 0)? UTILS_ERRORSTATE_SUCCESS : UTILS_ERRORSTATE_FAILURE;
+    if (!succeeded)
+    {
+        fprintf(stderr, "failed to resize file \"%s\"\n", view8NT(pPath));
+        return UTILS_ERRORSTATE_FAILURE;
+    }
+    else return UTILS_ERRORSTATE_SUCCESS;
+}
+
+utils_ErrorState utils_setFileSparsity(const View8* pPath, utils_SysHandle handle,
+                                        bool sparsity)
+{
+    FILE_SET_SPARSE_BUFFER arg = {.SetSparse = (BOOLEAN)sparsity};
+    BOOL done = DeviceIoControl(handle, FSCTL_SET_SPARSE, &arg, sizeof(arg), NULL, 0, NULL, NULL);
+    if (!done)
+    {
+        fprintf(stderr, "failed to ");
+        if (sparsity) fprintf(stderr, "enable ");
+                else fprintf(stderr, "disable ");
+        fprintf(stderr, "sparsity for file \"%s\"\n", view8NT(pPath));
+        return UTILS_ERRORSTATE_FAILURE;
+    }
+    else return UTILS_ERRORSTATE_SUCCESS;
 }
 
 

@@ -1,6 +1,6 @@
 #pragma once
 #include "../../mem/mem.h"
-#include "../cmds/cmds.h"
+#include "./cmds.h"
 
 typedef enum SrcType
 {
