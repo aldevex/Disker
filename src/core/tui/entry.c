@@ -38,9 +38,9 @@ es_t entry(size_t argCount, const UTF8_t *const * args)
     // Print version and mention the "help" command
     else utils_welcome();
 
-    // 30% easter egg print chance
+    // 10% easter egg print chance
     base_Time time;
-    if ((base_badRand() % 100 > 30) && base_time(&time) == ES_SUCCESS)
+    if ((base_badRand() % 100 > 10) && base_time(&time) == ES_SUCCESS)
     {
         if (time.monthOfYear == 10) // October
         {

@@ -22,8 +22,6 @@ add_executable(Disker)
 target_include_directories(Disker PUBLIC "src/")
 
 target_sources(Disker PRIVATE
-    # System specific / Base
-    "src/base/impl_common.c"
     # Memory management
     "src/mem/core_impl.c"
     # Core: Utils
@@ -32,17 +30,20 @@ target_sources(Disker PRIVATE
     "src/core/utils/string.c"
     "src/core/utils/file.c"
     "src/core/utils/guid.c"
+    # Layout: Generic function interface
+    "src/core/layout/generic.c"
     # Layout: Disk types
     "src/core/layout/disk/raw_img.c"
 )
-    # System-specific resources
+    # Platform-specific code
 if(PLATFORM STREQUAL "windows")
     target_sources(Disker PRIVATE
-        "res/windows.rc"
+        "src/base/impl_windows.c" # Windows & C standard base
+        "res/windows.rc"          # Windows resource code (CMake compiles it)
     )
 else()
     target_sources(Disker PRIVATE
-        "res/whatever.idk"
+        "src/base/impl_linux.c"
     )
 endif()
 

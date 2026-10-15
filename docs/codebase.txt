@@ -1,12 +1,15 @@
 
 Naming convention:
 
-- Base types:               lowercase suffixed by "_t".
-- Types:                    PascalCase.
-- Variables and functions:  camelCase.
-- Constants:                UPPER_SNAKE_CASE.
+- Base types:                  lowercase suffixed by "_t".
+- Types:                       PascalCase.
+- Variables and functions:     camelCase.
+- Constants:                   UPPER_SNAKE_CASE.
 
-- Files & directories:      lowercase, underscores ("_") for spacing.
+- Function-like macros:        camelCase
+- Constant definition macros:  UPPER_SNAKE_CASE
+- Files & directories:         lowercase, underscores ("_") for spacing.
+
 - Program TUI output texts must be gramatically correct and with punctuation.
 
 
@@ -74,8 +77,9 @@ Program pipeline:
     run core program logic, and affect the state and environment depending on user input.
     They call functions in a modular manner depending on the given data
         (e.g. disk image file format, in-partition disk layouts).
-    They validate user input relative to the program state
-        only if the validation isn't layout-specific and would be the exact same for all layouts
+    They validate user input relative to the program state and run part of the command
+        only if the validation and the ran part of the command aren't layout-specific
+        and would be the exact same for all layouts
         (e.g. closing an inexistent disk is invalid for any disk/image type)
 
 - The program may not write directly to disk/image unless explicitly told to by user.

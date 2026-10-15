@@ -51,6 +51,7 @@ typedef enum CmdType
     CMDTYPE_EG_BIG_K,
     CMDTYPE_EG_BIG_J,
     CMDTYPE_EG_BIG_P,
+    CMDTYPE_EG_BIG_M,
     CMDTYPE_EG_UEFI_SPEC,
     CMDTYPE_EG_FRANCAIS,
     CMDTYPE_EG_IGHRIQI,
@@ -65,7 +66,7 @@ typedef enum CmdType
 typedef struct CmdInfoCreateDisk
 {
     View8 path;
-    layout_Type diskType;
+    layout_DiskType type;
 } CmdInfoCreateDisk;
 
 // typedef struct CmdInfoSelectDisk
@@ -133,15 +134,3 @@ static inline Cmd cmdMake(CmdType type, CmdInfo info)
     result.info = info;
     return result;
 }
-
-// DARRAY_DEF(Dcmd, dcmd, Cmd)
-
-// typedef struct WriteCmdInfo
-// {
-//     Cmd* pCmd;
-//     DiskInfo* pDiskInfo;
-//     scheme_Type selectedScheme;
-//     uint64_t selectedPartNum;
-// } WriteCmdInfo;
-
-// extern utils_ErrorState writeCmd(WriteCmdInfo* pInfo);

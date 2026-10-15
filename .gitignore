@@ -1,4 +1,4 @@
-# Binaries
+# Built binaries
 *.o
 *.obj
 *.exe
@@ -8,10 +8,12 @@
 # Debugger Files
 *.pdb
 
-# Build directories
+# Build files
 build/
-.cache/
 prod/
+
+# LSP files
+.cache/
 
 # Development testing files & directories
 *.img

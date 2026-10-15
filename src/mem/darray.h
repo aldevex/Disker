@@ -163,6 +163,12 @@ static inline _mem_FUNC_ATTRIB Type fPrefix##Last(const structName* pDarray)\
 }
 
 DARRAY_DEF(Dbyte, dbyte, byte_t)
+
+DARRAY_DEF(Du8, du8, uint8_t)
+DARRAY_DEF(Du16, du16, uint16_t)
+DARRAY_DEF(Du32, du32, uint32_t)
+DARRAY_DEF(Du64, du64, uint64_t)
+
 DARRAY_DEF(Dbool, dbool, bool)
 DARRAY_DEF(Dsize, dsize, size_t)
 DARRAY_DEF(Dvptr, dvptr, void*)

@@ -38,10 +38,10 @@ typedef struct ConstSharedInfo
     bool autoYes;
     bool alwaysBinaryUnits;
 
-    layout_DiskInfo* pDiskInfo;
+    const layout_DiskInfo* pDiskInfo;
 
-    View8* pCmdView;
-    Dview* pCmdSegments;
-    Cmd* pCmd;
+    const View8* pCmdView;
+    const Dview* pCmdSegments;
+    const Cmd* pCmd;
     size_t afterBeginningI;
 } ConstSharedInfo;

@@ -24,6 +24,7 @@
 #include <stdbool.h>
 
 typedef unsigned char byte_t;
+typedef char ASCII8_t;
 typedef char UTF8_t;
 typedef uint16_t UTF16_t;
 

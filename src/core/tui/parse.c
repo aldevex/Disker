@@ -77,7 +77,7 @@ static bool checkPrintErroneousSize(uint64_t val, const View8* pSeg1, const View
 
 
 es_t parseCmd(const Dview* pSegments, size_t startI, const Dadinfo* pDeclInfos,
-                ParseSharedInfo* pSharedInfo, size_t* pAfterEndI)
+                ParseSharedInfo* pSharedInfo, size_t* pAfterEndIOptional)
 {
 es_t result = ES_FAILURE;
     String8 errMsg = {0};
@@ -263,7 +263,7 @@ es_t result = ES_FAILURE;
         if (currentDeclInfo.isEarlyTerminator) break;
     }
     // Finally save after-end index from local variable
-    *pAfterEndI = localAfterEndI;
+    if (pAfterEndIOptional != NULL) *pAfterEndIOptional = localAfterEndI;
 
     // Check missing required declarators and set default values for missing optional ones
     for (size_t declInfoI = 0; declInfoI < dadinfoSize(pDeclInfos); declInfoI++)

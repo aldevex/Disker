@@ -1,26 +1,22 @@
-// common.c: Windows/Linux with C standard library platform-specific implementation
+// Windows & C standard library platform-specific implementation
 #include "./core.h"
 
-#ifdef _WIN32
-    #define WIN32_LEAN_AND_MEAN
-    #include <windows.h>
-    #include <shellapi.h> // Needed for CommandLineToArgvW() | MUST LINK "shell32.dll"
-    #include <winioctl.h> // Needed for sparse file attribute R/W
-    #include <objbase.h> // Needed for CoCreateGuid() | YOU GOTTA LINK "ole32.dll"
-#endif
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <shellapi.h> // Needed for CommandLineToArgvW() |      MUST LINK "shell32.dll"
+#include <winioctl.h> // Needed for sparse file attribute R/W
+#include <objbase.h> // Needed for CoCreateGuid() |             MUST LINK "ole32.dll"
 
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include <time.h>
 #include <locale.h>
-#include <stdatomic.h>
 
 
 
 // Internal utils
 
-#ifdef _WIN32
 // Input text must be null terminated
 // Allocates and returns UTF-16 converted string
 // Returns NULL on failure
@@ -205,25 +201,19 @@ static UTF8_t* _base_UTF16to8(const UTF16_t* pSrc)
 
 ATTRIB_NORETURN static void _base_directHalt(es_t success)
 {
-#ifdef _WIN32
     ExitProcess((success)? (UINT)EXIT_SUCCESS : (UINT)EXIT_FAILURE);
-#endif
 }
 
 static void _base_directPrint(const UTF8_t* text)
 {
-#ifdef _WIN32
     const HANDLE hConOutput = GetStdHandle(STD_OUTPUT_HANDLE);
     WriteFile(hConOutput, text, strlen(text), NULL, NULL);
-#endif
 }
-#endif
 
 
 
 // Enty point
 
-#ifdef _WIN32
 BOOL WINAPI _base_sigHandler(DWORD signal)
 {
     // Return false = pass the signal to the next handler
@@ -234,7 +224,6 @@ BOOL WINAPI _base_sigHandler(DWORD signal)
     // JIC compiler complains
     return true;
 }
-#endif
 
 int main(int argCount, UTF8_t** args8)
 {
@@ -242,27 +231,24 @@ int main(int argCount, UTF8_t** args8)
     setlocale(LC_MONETARY, ""); // User default
     setlocale(LC_NUMERIC, ""); // User default
     setlocale(LC_TIME, ""); // User default
-#ifdef _WIN32
+    
     setlocale(LC_COLLATE, ".UTF-8"); // User language in UTF-8
     setlocale(LC_CTYPE, ".UTF-8"); // User language in UTF-8
     SetConsoleOutputCP(CP_UTF8); // UTF-8
     SetConsoleCP(CP_UTF8); // UTF-8
-#elif __linux__
-    setlocale(LC_COLLATE, "C.UTF-8"); // Basic C locale in UTF-8
-    setlocale(LC_CTYPE, "C.UTF-8"); // Basic C locale in UTF-8
-#endif
+
+// #elif __linux__
+//     setlocale(LC_COLLATE, "C.UTF-8"); // Basic C locale in UTF-8
+//     setlocale(LC_CTYPE, "C.UTF-8"); // Basic C locale in UTF-8
+// #endif
 
     // Set signal handler to reset terminal colour on halt (Ctrl+C)
-#ifdef _WIN32
     if (!SetConsoleCtrlHandler(_base_sigHandler, TRUE))
         return ES_FAILURE;
-#endif
 
     // Set random seed (for easter eggs random number generation)
     srand((unsigned int)time(NULL));
 
-    // Get UTF-8 args in Windows
-#ifdef _WIN32
     // Get UTF-16 args
     UTF16_t** args16 = CommandLineToArgvW(GetCommandLineW(), &argCount);
     if (args16 == NULL)
@@ -289,8 +275,6 @@ int main(int argCount, UTF8_t** args8)
     }
     // Free UTF-16 args
     LocalFree(args16);
-#elif __linux__
-#endif
 
     // Set colour to normal
     base_printf(COLOUR_NORMAL);
@@ -298,12 +282,10 @@ int main(int argCount, UTF8_t** args8)
     // Call core entry
     es_t es = entry((size_t)argCount, (const UTF8_t *const *)args8);
 
-    // Free created UTF-8 args in Windows
-#ifdef _WIN32
+    // Free manually created UTF-8 args
     for (int i = 0; i < argCount; i++)
         base_realloc(args8[i], 0);
     base_realloc(args8, 0);
-#endif
 
     // Reset terminal colour to default
     base_printf("\e[0m");
@@ -313,7 +295,7 @@ int main(int argCount, UTF8_t** args8)
 
 
 
-// Base "base.h"
+// Core "core.h"
 
 ATTRIB_NORETURN void base_halt(es_t success)
 {
@@ -409,7 +391,7 @@ void base_snprintf(UTF8_t* destination, size_t size, const UTF8_t* format, ...)
 handle_t base_openFile(const UTF8_t* pPath, base_OFMethod method, bool* pCreatedNewFileOptional)
 {
     handle_t result;
-#ifdef _WIN32
+
     // Get UTF-16 path because windows
     UTF16_t* pPath16 = _base_UTF8to16(pPath);
     if (pPath16 == NULL) return HANDLE_NONE;
@@ -456,16 +438,13 @@ handle_t base_openFile(const UTF8_t* pPath, base_OFMethod method, bool* pCreated
                         FILE_ATTRIBUTE_NORMAL, NULL);
     base_realloc(pPath16, 0);
     return result;
-#endif
 }
 
 es_t base_closeFile(handle_t* pHandle)
 {
     handle_t copy = *pHandle;
     *pHandle = HANDLE_NONE;
-#ifdef _WIN32
     return (es_t)CloseHandle(copy);
-#endif
 }
 
 es_t base_seekFile(handle_t handle, uint64_t offset)
@@ -478,7 +457,6 @@ es_t base_seekFile(handle_t handle, uint64_t offset)
 
 es_t base_readFile(handle_t handle, uint64_t size, void* pBlock)
 {
-#ifdef _WIN32
     // Loop because ReadFile takes a DWORD for size
     while (size != 0)
     {
@@ -494,12 +472,10 @@ es_t base_readFile(handle_t handle, uint64_t size, void* pBlock)
     
     // Return
     return ES_SUCCESS;
-#endif
 }
 
 es_t base_writeFile(handle_t handle, uint64_t size, const void* pBlock)
 {
-#ifdef _WIN32
     // Loop because WriteFile takes a DWORD for size
     while (size != 0)
     {
@@ -515,12 +491,10 @@ es_t base_writeFile(handle_t handle, uint64_t size, const void* pBlock)
     
     // Return
     return ES_SUCCESS;
-#endif
 }
 
 es_t base_getFileInfo(handle_t handle, uint64_t* pSize, bool* pSparseOptional)
 {
-#ifdef _WIN32
     // Get file logical size
     FILE_STANDARD_INFO standardInfo = {0};
     if (!GetFileInformationByHandleEx(handle, FileStandardInfo, &standardInfo, sizeof(standardInfo)))
@@ -536,12 +510,10 @@ es_t base_getFileInfo(handle_t handle, uint64_t* pSize, bool* pSparseOptional)
         *pSparseOptional = ((basicInfo.FileAttributes & FILE_ATTRIBUTE_SPARSE_FILE) != 0);
 
     return ES_SUCCESS;
-#endif
 }
 
 es_t base_resizeFile(handle_t handle, uint64_t newSize)
 {
-#ifdef _WIN32
     LARGE_INTEGER apiSize = {.QuadPart = newSize};
     BOOL succeeded = SetFilePointerEx(handle, apiSize, NULL, FILE_BEGIN);
     if (succeeded)
@@ -549,23 +521,20 @@ es_t base_resizeFile(handle_t handle, uint64_t newSize)
     if (!succeeded)
         return ES_FAILURE;
     return ES_SUCCESS;
-#endif
 }
 
 es_t base_setFileSparsity(handle_t handle, bool sparsity)
 {
-#ifdef _WIN32
     FILE_SET_SPARSE_BUFFER apiArg = {.SetSparse = (BOOLEAN)sparsity};
     if (!DeviceIoControl(handle, FSCTL_SET_SPARSE, &apiArg, sizeof(apiArg), NULL, 0, NULL, NULL))
         return ES_FAILURE;
     return ES_SUCCESS;
-#endif
 }
+
+#define isSeparator(c) (c == '\\' || c == '/')
 
 base_PathType base_getPathType(const UTF8_t* path, size_t pathSize)
 {
-#define isSeparator(c) (c == '\\' || c == '/')
-#ifdef _WIN32
     if (pathSize == 0) return BASE_PATHTYPE_INVALID;
 
     // Direct disks \\.\PhysicalDriveN or \\?\PhysicalDriveN
@@ -650,8 +619,6 @@ base_PathType base_getPathType(const UTF8_t* path, size_t pathSize)
     // Inexistent/invalid path
     base_realloc(path16, 0);
     return BASE_PATHTYPE_INVALID;
-#endif
-#undef isSeparator
 }
 
 
@@ -688,8 +655,7 @@ uint32_t base_badRand()
 
 es_t base_randUuidv4(void* pData128)
 {
-#ifdef _WIN32
-    // UUIDv4 totally random bits
+    // UUIDv4 random bits
     GUID apiGUID;
     HRESULT hr = CoCreateGuid(&apiGUID);
     if (SUCCEEDED(hr))
@@ -698,5 +664,4 @@ es_t base_randUuidv4(void* pData128)
         return ES_SUCCESS;
     }
     else return ES_FAILURE;
-#endif
 }

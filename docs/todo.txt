@@ -1,18 +1,28 @@
 
-# Current goals:
-Rewrite:
-    - Put the layout-specific switch statements inside a generic layout function
+Last stopped at: Fixing raw img and adding vhd basics (src/core/layout/disk/)
 
+# Current goals:
+Make the program actually do stuff 🤯 R/W for .img, real disk, .vhd, MBR, GPT, FAT:
+
+    - Make raw img layout code check after-beginning args:
+        ensure the parsing function allows 0 declarators for unexpected value checks
+        make it use sectsize only in edit, on creation set initial state and data
+        with a flag for "default disk" so that on save no warning (dont forget diskinfo.edit boolean)
+
+    - Add .vhd and real disk IO
+    
     - Choose a pipeline:
         1. Global disk layout function initializes itself and calls everything else
         2. Core functions initializes global layout and other layouts
-
-    - Make the program actually do stuff 🤯 R/W for .img, real disk, .vhd, MBR, GPT, FAT
+    - Add MBR and GPT
+    - Add FAT and another FS
 
 
 
 Misc:
-- Ensure that file and direct args input works
+- Make utils able to use array of bytes UUID instead of just Microsoft's GUID struct
+- Save some function pointers instead of switching for each command
+- Ensure that file and direct args input work
 - Ensure 100% detailed error printing with command segments and error codes or possible detail strings
 - Polish final codebase division
 - Add MBR partition R/W
@@ -27,10 +37,6 @@ Misc:
 - Disallow "disk parts n" in MBR, and allow minimum 128 partitions in GPT
 - Add "sort" flag to "disk" command to correctly order and pack chaotic partition tables
 - Make parseCmd do some extra textual argument validation & conversion
-- Add raw image GPT R/W
-- Add raw image FAT32 R/W
-- Add actual disk support
-- Add a second image file format support
 - Add endsWith method to string and view
 - Add getBackupHeader method in gpt header class
 - Fix string capacity includes null terminator (string core functions)
@@ -55,6 +61,7 @@ Misc:
 - Add clear fs command/argument or a "create" replacement to "select" for always making a new file
 - Add environment variable support
 - Add setting .dr file icons to disker icon if Disker didn't do so before
+- Add disk image format conversion and more commands in general
 
 
 

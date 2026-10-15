@@ -10,6 +10,13 @@ typedef struct ParseSharedInfo
     bool alwaysBinaryUnits;
 } ParseSharedInfo;
 
+#define constToParseSharedInfo(pConstSharedInfo)\
+    (ParseSharedInfo){\
+        .pCmdView = pConstSharedInfo->pCmdView,\
+        .srcType = pConstSharedInfo->srcType,\
+        .alwaysBinaryUnits = pConstSharedInfo->alwaysBinaryUnits\
+    };
+
 // If parse type is SRCTYPE_TERMINAL_LINES, prints:  invalid command ($reason "$optionalSpecifiedText")
 //                                otherwise prints:  invalid command "$cmdView" ($reason "$optionalSpecifiedText")
 void printInvalidCmdError(const View8* pReasonView, const View8* pSpecifiedTextView_optional,
@@ -138,4 +145,4 @@ DARRAY_DEF(Dadinfo, dadinfo, ADInfo)
 
 // Validates, prints errors, and extracts all command argument declarators and values
 es_t parseCmd(const Dview* pSegments, size_t startI, const Dadinfo* pDeclInfos,
-                ParseSharedInfo* pSharedInfo, size_t* pAfterEndI);
+                ParseSharedInfo* pSharedInfo, size_t* pAfterEndIOptional);

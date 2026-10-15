@@ -3,7 +3,7 @@
 #include "./parse.h"
 #include "./cmd.h"
 #include "../../base/rand.h"
-#include "../layout/disk/raw_img.h"
+#include "../layout/generic.h"
 
 static void cmdSetAutoYes(const ConstSharedInfo* pInfo, ProgState* pState);
 static void cmdSetAlwaysBinary(const ConstSharedInfo* pInfo, ProgState* pState);
@@ -20,7 +20,6 @@ static es_t cmdClose(const ConstSharedInfo* pInfo, layout_DiskInfo* pDiskInfo);
 static bool cmdExit(const ConstSharedInfo* pInfo);
 
 static void cmdEG(const ConstSharedInfo* pInfo);
-
 
 // Parsing code may not R/W program state directly
 //   so the program logic remains simple 🤯
@@ -131,6 +130,7 @@ es_t core(const Dview* pArgs, ProgState* pState)
         case CMDTYPE_EG_BIG_K:
         case CMDTYPE_EG_BIG_J:
         case CMDTYPE_EG_BIG_P:
+        case CMDTYPE_EG_BIG_M:
         case CMDTYPE_EG_UEFI_SPEC:
         case CMDTYPE_EG_FRANCAIS:
         case CMDTYPE_EG_IGHRIQI:
@@ -147,20 +147,7 @@ es_t core(const Dview* pArgs, ProgState* pState)
         }
     }
 end:
-    // Close opened disk and free layout-specfic metadata memory
-    switch (pState->diskInfo.diskLayout.type)
-    {
-    case LAYOUT_TYPE_NULL:
-    case LAYOUT_TYPE_UNKNOWN:
-        break;
-    case LAYOUT_TYPE_DISK_RAW_IMAGE:
-        lrawimgExit(&sharedInfo);
-        break;
-    default:
-        base_fatalErrorf("Unprogrammed disk type = %u at end of %s.\n",
-                        pState->diskInfo.diskLayout.type, __func__);
-        base_halt(ES_FAILURE);
-    }
+    lgeneric_free(&sharedInfo, &pState->diskInfo);
     string8Free(&cmdString);
     dviewFree(&cmdSegments);
     return (pState->errorCount == 0)? ES_SUCCESS : ES_FAILURE;
@@ -172,7 +159,7 @@ static es_t parseBeginning(const View8* pCmdView, const Dview* pSegments,
                             SrcType srcType, bool alwaysBinaryUnits,
                             Cmd* pResultCmd, size_t* pAfterBeginningI)
 {
-    // For quickly passing these 2 args to called functions
+    // For quickly passing these 3 args to called functions
     ParseSharedInfo sharedInfo = (ParseSharedInfo){
         .pCmdView = pCmdView,
         .srcType = srcType,
@@ -199,7 +186,7 @@ static es_t parseBeginning(const View8* pCmdView, const Dview* pSegments,
     {
         dadinfoAppendV(&declInfos, adinfoMake("autoyes", true, false, NULL, 0));
 
-        if (parseCmd(pSegments, 0, &declInfos, &sharedInfo, pAfterBeginningI)
+        if (parseCmd(pSegments, 0, &declInfos, &sharedInfo, NULL)
             != ES_SUCCESS) error = true;
         else
             resultCmd = cmdMake(CMDTYPE_SET_AUTO_YES, (CmdInfo){.switchValue = true});
@@ -208,7 +195,7 @@ static es_t parseBeginning(const View8* pCmdView, const Dview* pSegments,
     {
         dadinfoAppendV(&declInfos, adinfoMake("manyes", true, false, NULL, 0));
 
-        if (parseCmd(pSegments, 0, &declInfos, &sharedInfo, pAfterBeginningI)
+        if (parseCmd(pSegments, 0, &declInfos, &sharedInfo, NULL)
             != ES_SUCCESS) error = true;
         else
             resultCmd = cmdMake(CMDTYPE_SET_AUTO_YES, (CmdInfo){.switchValue = false});
@@ -219,7 +206,7 @@ static es_t parseBeginning(const View8* pCmdView, const Dview* pSegments,
     {
         dadinfoAppendV(&declInfos, adinfoMake("binary", true, false, NULL, 0));
 
-        if (parseCmd(pSegments, 0, &declInfos, &sharedInfo, pAfterBeginningI)
+        if (parseCmd(pSegments, 0, &declInfos, &sharedInfo, NULL)
             != ES_SUCCESS) error = true;
         else
             resultCmd = cmdMake(CMDTYPE_SET_ALWAYS_BINARY, (CmdInfo){.switchValue = true});
@@ -228,7 +215,7 @@ static es_t parseBeginning(const View8* pCmdView, const Dview* pSegments,
     {
         dadinfoAppendV(&declInfos, adinfoMake("decimal", true, false, NULL, 0));
 
-        if (parseCmd(pSegments, 0, &declInfos, &sharedInfo, pAfterBeginningI)
+        if (parseCmd(pSegments, 0, &declInfos, &sharedInfo, NULL)
             != ES_SUCCESS) error = true;
         else
             resultCmd = cmdMake(CMDTYPE_SET_ALWAYS_BINARY, (CmdInfo){.switchValue = false});
@@ -239,7 +226,7 @@ static es_t parseBeginning(const View8* pCmdView, const Dview* pSegments,
     {
         dadinfoAppendV(&declInfos, adinfoMake("cls", true, false, NULL, 0));
 
-        if (parseCmd(pSegments, 0, &declInfos, &sharedInfo, pAfterBeginningI)
+        if (parseCmd(pSegments, 0, &declInfos, &sharedInfo, NULL)
             != ES_SUCCESS) error = true;
         else
             resultCmd = cmdMake(CMDTYPE_CLS, (CmdInfo){0});
@@ -250,7 +237,7 @@ static es_t parseBeginning(const View8* pCmdView, const Dview* pSegments,
     {
         dadinfoAppendV(&declInfos, adinfoMake("help", true, false, NULL, 0));
 
-        if (parseCmd(pSegments, 0, &declInfos, &sharedInfo, pAfterBeginningI)
+        if (parseCmd(pSegments, 0, &declInfos, &sharedInfo, NULL)
             != ES_SUCCESS) error = true;
         else
             resultCmd = cmdMake(CMDTYPE_HELP, (CmdInfo){0});
@@ -261,7 +248,7 @@ static es_t parseBeginning(const View8* pCmdView, const Dview* pSegments,
     {
         dadinfoAppendV(&declInfos, adinfoMake("version", true, false, NULL, 0));
 
-        if (parseCmd(pSegments, 0, &declInfos, &sharedInfo, pAfterBeginningI)
+        if (parseCmd(pSegments, 0, &declInfos, &sharedInfo, NULL)
             != ES_SUCCESS) error = true;
         else
             resultCmd = cmdMake(CMDTYPE_VERSION, (CmdInfo){0});
@@ -293,7 +280,7 @@ static es_t parseBeginning(const View8* pCmdView, const Dview* pSegments,
             utils_PathType pt = utils_getPathType(&vwstr(&path.textualVal));
             if (pt == UTILS_PATHTYPE_DISK)
             {
-                resultCmd.info.createDisk.diskType = LAYOUT_TYPE_DISK_REAL_DISK;
+                resultCmd.info.createDisk.type = LAYOUT_DISKTYPE_REAL_DISK;
             }
             else
             {
@@ -301,7 +288,7 @@ static es_t parseBeginning(const View8* pCmdView, const Dview* pSegments,
                 switch (ft)
                 {
                 case UTILS_FILETYPE_RAW:
-                    resultCmd.info.createDisk.diskType = LAYOUT_TYPE_DISK_RAW_IMAGE;
+                    resultCmd.info.createDisk.type = LAYOUT_DISKTYPE_RAW_IMAGE;
                     break;
                 default:
                     base_stdErrorf("Unsupported disk image file type \"%s\".\n",
@@ -326,7 +313,7 @@ static es_t parseBeginning(const View8* pCmdView, const Dview* pSegments,
     {
         dadinfoAppendV(&declInfos, adinfoMake("close", true, false, NULL, 0));
 
-        if (parseCmd(pSegments, 0, &declInfos, &sharedInfo, pAfterBeginningI)
+        if (parseCmd(pSegments, 0, &declInfos, &sharedInfo, NULL)
             != ES_SUCCESS) error = true;
         else
             resultCmd = cmdMake(CMDTYPE_CLOSE, (CmdInfo){0});
@@ -337,7 +324,7 @@ static es_t parseBeginning(const View8* pCmdView, const Dview* pSegments,
     {
         dadinfoAppendV(&declInfos, adinfoMake("exit", true, false, NULL, 0));
 
-        if (parseCmd(pSegments, 0, &declInfos, &sharedInfo, pAfterBeginningI)
+        if (parseCmd(pSegments, 0, &declInfos, &sharedInfo, NULL)
             != ES_SUCCESS) error = true;
         else
             resultCmd = cmdMake(CMDTYPE_EXIT, (CmdInfo){0});
@@ -376,6 +363,13 @@ static es_t parseBeginning(const View8* pCmdView, const Dview* pSegments,
     && utils_compareLowNT(&at(pSegments, 1), "p"))
     {
         resultCmd = cmdMake(CMDTYPE_EG_BIG_P, (CmdInfo){0});
+    }
+    // Easter egg: Big M says "i am a compiler"
+    else if (utils_compareLowNT(&at(pSegments, 0), "big")
+    && dviewSize(pSegments) == 2
+    && utils_compareLowNT(&at(pSegments, 1), "m"))
+    {
+        resultCmd = cmdMake(CMDTYPE_EG_BIG_M, (CmdInfo){0});
     }
     // Easter egg: "Help me" in french
     else if (utils_compareLowNT(&at(pSegments, 0), "aide")
@@ -506,15 +500,7 @@ static es_t cmdCreateDisk(const ConstSharedInfo* pInfo, CmdInfo* pCmdInfo, layou
         if (!utils_confirmation()) return ES_SUCCESS;
     }
 
-    switch (pInfo->pCmd->info.createDisk.diskType)
-    {
-    case LAYOUT_TYPE_DISK_RAW_IMAGE:
-        return lrawimgCmdCreate(pInfo, pCmdInfo, pDiskInfo);
-    default:
-        base_fatalErrorf("Unprogrammed disk type = %u given to %s.\n",
-                        pInfo->pCmd->info.createDisk.diskType, __func__);
-        base_halt(ES_FAILURE);
-    }
+    return lgeneric_create(pInfo, pCmdInfo, pDiskInfo);
 }
 
 
@@ -529,15 +515,7 @@ static es_t cmdClose(const ConstSharedInfo* pInfo, layout_DiskInfo* pDiskInfo)
         if (!utils_confirmation()) return ES_SUCCESS;
     }
 
-    switch (pInfo->pDiskInfo->diskLayout.type)
-    {
-    case LAYOUT_TYPE_DISK_RAW_IMAGE:
-        return lrawimgCmdClose(pInfo, pDiskInfo);
-    default:
-        base_fatalErrorf("Unprogrammed disk type = %u given to %s.\n",
-                        pInfo->pDiskInfo->diskLayout.type, __func__);
-        base_halt(ES_FAILURE);
-    }
+    return lgeneric_close(pInfo, pDiskInfo);
 }
 
 static bool cmdExit(const ConstSharedInfo* pInfo)
@@ -577,6 +555,9 @@ static void cmdEG(const ConstSharedInfo* pInfo)
         break;
     case CMDTYPE_EG_BIG_P:
         base_printf("What's an OS?\n");
+        break;
+    case CMDTYPE_EG_BIG_M:
+        base_printf("i am a compiler\n");
         break;
     case CMDTYPE_EG_UEFI_SPEC:
         base_printf(u8"The UEFI spec we listen and obey 🫡"

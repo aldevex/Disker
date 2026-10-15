@@ -8,39 +8,40 @@
 // A layout type greater than or equal to extension-begin (EXTBEGIN)
 //   is registered and used dynamically at runtime
 
-// PT means partition table
-typedef enum layout_Type
+// Disk format (e.g. raw .img file, .vhd file, a real disk)
+typedef enum layout_DiskType
 {
-    LAYOUT_TYPE_NULL,
-    LAYOUT_TYPE_UNKNOWN,
+    LAYOUT_DISKTYPE_NULL,
+    LAYOUT_DISKTYPE_UNKNOWN,
 
-    LAYOUT_TYPE_DISKBEGIN,
-    LAYOUT_TYPE_DISK_REAL_DISK,
-    LAYOUT_TYPE_DISK_RAW_IMAGE,
-    LAYOUT_TYPE_DISKEND,
+    LAYOUT_DISKTYPE_REAL_DISK,
+    LAYOUT_DISKTYPE_RAW_IMAGE,
+} layout_DiskType;
 
-    LAYOUT_TYPE_PTBEGIN,
-    LAYOUT_TYPE_PT_MBR,
-    LAYOUT_TYPE_PT_GPT,
-    LAYOUT_TYPE_PTEND,
-
-    LAYOUT_TYPE_FSBEGIN,
-    LAYOUT_TYPE_FS_FAT,
-    LAYOUT_TYPE_FSEND,
-
-    // LAYOUT_TYPE_SPECIALBEGIN,
-    // LAYOUT_TYPE_SPECIAL_IDK,
-    // LAYOUT_TYPE_SPECIALEND,
-
-    LAYOUT_TYPE_EXTBEGIN
-} layout_Type;
-
-typedef struct layout_Info
+// In-volume layout (e.g. MBR, GPT, FAT)
+typedef enum layout_VolType
 {
-    layout_Type type;
+    LAYOUT_VOLTYPE_NULL,
+    LAYOUT_VOLTYPE_UNKNOWN,
+
+    LAYOUT_VOLTYPE_PTBEGIN,
+    LAYOUT_VOLTYPE_PT_MBR,
+    LAYOUT_VOLTYPE_PT_GPT,
+    LAYOUT_VOLTYPE_PTEND,
+
+    LAYOUT_VOLTYPE_FSBEGIN,
+    LAYOUT_VOLTYPE_FS_FAT,
+    LAYOUT_VOLTYPE_FSEND,
+
+    LAYOUT_VOLTYPE_EXTBEGIN
+} layout_VolType;
+
+typedef struct layout_VolInfo
+{
+    layout_VolType type;
     void* pMetadata;
-} layout_Info;
-DARRAY_DEF(Dlinfo, dlinfo, layout_Info)
+} layout_VolInfo;
+DARRAY_DEF(Dlvinfo, dlvinfo, layout_VolInfo)
 
 typedef struct layout_DiskInfo
 {
@@ -48,21 +49,15 @@ typedef struct layout_DiskInfo
     handle_t handle;
     // Edited any layouts in the disk info object
     bool edited;
-    // Disk format (e.g. raw disk, .vhd)
-    layout_Info diskLayout;
+    // Disk format layout (e.g. raw disk, .vhd)
+    struct {
+        layout_DiskType type;
+        void* pMetadata;
+    } diskLayout;
     // Disk-wide layout (e.g. MBR, FAT16 unpartitioned)
-    layout_Info globalLayout;
+    layout_VolInfo globalLayout;
     // Partition-wide layout (e.g. FAT32 in a partition)
-    Dlinfo partLayouts;
+    Dlvinfo partLayouts;
 } layout_DiskInfo;
 
 #define LAYOUT_DISKINFO_DEFAULT (layout_DiskInfo){ .handle = HANDLE_NONE }
-
-
-
-// Bad prototype, just take argsStartI and pErrorText from it:
-
-// es_t layout_diskInfoInit(layout_DiskInfo* pInfo, String8* pErrorText,
-//                 String8* pAdoptedPath, const String8* pCmdText, const Dview* pCmdSegs, size_t argsStartI);
-
-// es_t layout_diskInfoFree(layout_DiskInfo* pInfo);
