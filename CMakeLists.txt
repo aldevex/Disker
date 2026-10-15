@@ -22,35 +22,37 @@ add_executable(Disker)
 target_include_directories(Disker PUBLIC "src/")
 
 target_sources(Disker PRIVATE
-    # Memory
-    "src/mem/core_imp.c"
-    # Utils
-    "src/utils/base.c"
-    "src/utils/checksum.c"
-    "src/utils/tui.c"
-    "src/utils/string.c"
-    "src/utils/file.c"
-    "src/utils/guid.c"
-    # Disk: Info
-    "src/disk/info.c"
-    # Disk: Geometry
-    "src/disk/format/format.c"
-    # No C files yet
+    # System specific / Base
+    "src/base/impl_common.c"
+    # Memory management
+    "src/mem/core_impl.c"
+    # Core: Utils
+    "src/core/utils/checksum.c"
+    "src/core/utils/tui.c"
+    "src/core/utils/string.c"
+    "src/core/utils/file.c"
+    "src/core/utils/guid.c"
+    # Layout: Disk types
+    "src/core/layout/disk/raw_img.c"
 )
-    # System-specific implementation
+    # System-specific resources
 if(PLATFORM STREQUAL "windows")
-    target_sources(Disker PRIVATE "src/res/windows.rc")
+    target_sources(Disker PRIVATE
+        "res/windows.rc"
+    )
 else()
-    target_sources(Disker PRIVATE "src/res/whatever.idk")
+    target_sources(Disker PRIVATE
+        "res/whatever.idk"
+    )
 endif()
 
-    # Core: UI-specific
+    # Core: Main (UI-specific)
 if(UI_TYPE STREQUAL "tui")
     target_sources(Disker PRIVATE
         "src/core/tui/entry.c"
+        "src/core/tui/core.c"
+        "src/core/tui/input.c"
         "src/core/tui/parse.c"
-        "src/core/tui/state.c"
-        "src/core/tui/error.c"
     )
 elseif(UI_TYPE STREQUAL "gui")
     target_sources(Disker PRIVATE
@@ -62,7 +64,14 @@ else()
     message(FATAL_ERROR "Invalid UI_TYPE: ${UI_TYPE}. expected 'gui' or 'tui'.")
 endif()
 
-
+if(PLATFORM STREQUAL "windows")
+    target_link_options(Disker PRIVATE
+        -Wl,/ignore:longsections
+    )
+    target_link_libraries(Disker PRIVATE
+        shell32 ole32
+    )
+endif()
 
 target_compile_options(Disker PRIVATE
     -finput-charset=UTF-8
@@ -76,8 +85,3 @@ target_compile_options(Disker PRIVATE
     -D_CRT_SECURE_NO_WARNINGS
     -Werror
 )
-
-if(PLATFORM STREQUAL "windows")
-    target_link_options(Disker PRIVATE -Wl,/ignore:longsections)
-    target_link_libraries(Disker PRIVATE shell32 ole32)
-endif()

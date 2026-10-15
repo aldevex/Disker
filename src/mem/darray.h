@@ -1,7 +1,4 @@
 #pragma once
-#include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include "./core.h"
 
 #define DARRAY_DEF(structName, fPrefix, Type)\
@@ -39,9 +36,9 @@ static inline _mem_FUNC_ATTRIB void fPrefix##AdoptPS(structName* pDarray, Type**
 {\
     if (pPtrItems == NULL)\
     {\
-        fprintf(stderr, "pPtrItems = NULL given to %s for Darray %p\n",\
+        base_fatalErrorf("pPtrItems = NULL given to %s for Darray %p\n",\
                         __func__, pDarray);\
-        exit(EXIT_FAILURE);\
+        base_halt(ES_FAILURE);\
     }\
     pDarray->_pBuffer = *pPtrItems;\
     pDarray->_capacity = itemCount;\
@@ -76,11 +73,7 @@ static inline _mem_FUNC_ATTRIB void fPrefix##ResizeR(structName* pDarray, size_t
 static inline _mem_FUNC_ATTRIB void fPrefix##ResizeDirectly(structName* pDarray, size_t newSize)\
 {\
     if (newSize > pDarray->_capacity)\
-    {\
-        fprintf(stderr, "newSize = %zu > pDarray->_capacity given to %s for Darray %p\n",\
-                        newSize, __func__, pDarray);\
-        exit(EXIT_FAILURE);\
-    }\
+        _memRealloc(&pDarray->_generic, newSize, sizeof(Type));\
     pDarray->_count = newSize;\
 }\
 \
@@ -172,3 +165,4 @@ static inline _mem_FUNC_ATTRIB Type fPrefix##Last(const structName* pDarray)\
 DARRAY_DEF(Dbyte, dbyte, byte_t)
 DARRAY_DEF(Dbool, dbool, bool)
 DARRAY_DEF(Dsize, dsize, size_t)
+DARRAY_DEF(Dvptr, dvptr, void*)

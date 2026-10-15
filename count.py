@@ -2,7 +2,7 @@ from pathlib import Path
 
 if __name__ == "__main__":
     total_lines = 0
-    root = Path(".")
+    root = Path("./src")
     
     # Find all .c and .h files recursively, excluding anything in a 'build' directory
     files = [

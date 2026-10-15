@@ -1,18 +1,31 @@
 
 # Current goals:
-- Finalize the disk writing method, make it good
-- Add MBR partition R/W
-- Ensure everything is working correctly
-    (Disk size, sector size, alignment, scheme, partitions, sparse)
+Rewrite:
+    - Put the layout-specific switch statements inside a generic layout function
+
+    - Choose a pipeline:
+        1. Global disk layout function initializes itself and calls everything else
+        2. Core functions initializes global layout and other layouts
+
+    - Make the program actually do stuff 🤯 R/W for .img, real disk, .vhd, MBR, GPT, FAT
 
 
 
 Misc:
+- Ensure that file and direct args input works
+- Ensure 100% detailed error printing with command segments and error codes or possible detail strings
+- Polish final codebase division
+- Add MBR partition R/W
+- Improve path handling in disk selection/creation
+- Ensure everything is working correctly
+    (Disk size, sector size, alignment, scheme, partitions, sparse)
+- Add MBR bootloader setting command
 - Add warnings even on autoyes
+- Polish comments
 - Make raw disk image selection detect sector size automatically
     and ask or assume otherwise
 - Disallow "disk parts n" in MBR, and allow minimum 128 partitions in GPT
-- Add packparts flag to "disk" command to pack chaotic partition tables
+- Add "sort" flag to "disk" command to correctly order and pack chaotic partition tables
 - Make parseCmd do some extra textual argument validation & conversion
 - Add raw image GPT R/W
 - Add raw image FAT32 R/W
@@ -23,7 +36,7 @@ Misc:
 - Fix string capacity includes null terminator (string core functions)
 - Save UTF-16 string copies to reduce winapi conversions
 - Add alias help (e.g if you write "echo" it tells you use "list")
-    A list of aliases:
+    A list of some aliases to add:
         CMDTYPE_FS_CWD, Change or show CWD (cd, pwd)
         CMDTYPE_FS_LIST, List FSIs in the CWD (list, ls)
         CMDTYPE_FS_TREE, List all FSIs in the CWD including nested ones (tree)
@@ -35,17 +48,18 @@ Misc:
         CMDTYPE_FS_RENAME, Rename an FSI (ren, rename)
         CMDTYPE_FS_COPY, Copy an FSI (copy, cp, move, mv)
 - Add all commands
+- Better memory management
+- Add logging to a file
 - Check invalid disk/sector sizes (that don't work with sector count or alignment)
     just give a warning, or error
 - Add clear fs command/argument or a "create" replacement to "select" for always making a new file
-- Improve path type function
-- Add GPT and FAT32 support
 - Add environment variable support
-- Add total UTF-8 and UTF-16 validation logic in _stringUTF8to16 and _stringUTF16to8
+- Add setting .dr file icons to disker icon if Disker didn't do so before
 
 
 
 Final delayed codebase changes:
+- Add runtime extensible layouts via external DLLs and/or (managed by an isolated child process)
 - Improve errors, functions outside parseCmd currently aren't specifying erroneous command segments
 - Add colouring to TUI IO
 - Add developer and user documentation, doxygen comments, full help string, usage examples
@@ -56,6 +70,8 @@ Final delayed codebase changes:
 - Make code work on big endian environments
 - Add support for more image file formats and file systems
     don't make .iso files sparse because they're supposed to be filled anyway
-- Add GUI
 - Add bare metal binaries because why not
-- Add disk recovery tooling in the far future?
+- Add disk recovery tooling
+- Add mode toggle to obfuscate information, and omit or obfuscate excess data
+- Add simple disk setup mode
+- Add GUI

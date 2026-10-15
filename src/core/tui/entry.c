@@ -1,93 +1,134 @@
-#include <locale.h>
-#include <stdio.h>
-#include <stdatomic.h>
 #include "../../mem/mem.h"
-#ifdef _WIN32
-#include <windows.h>
-#endif
-#include "./tui.h"
+#include "../../base/time.h"
+#include "../../base/rand.h"
+#include "../../base/file.h"
+#include "../utils/utils.h"
+#include "./state.h"
+#include "./core.h"
 
-#ifdef _WIN32
-BOOL WINAPI sigHandler(DWORD signal)
+es_t entry(size_t argCount, const UTF8_t *const * args)
 {
-    // Return false = pass the signal to the next handler
-    if (signal != CTRL_C_EVENT) return false;
+    // Create string views for args
+    Dview argViews = {0};
+    for (size_t i = 0; i < argCount; i++)
+        dviewAppendR(&argViews, &vw(args[i]));
     
-    // Reset terminal colour to default
-    const HANDLE hConOutput = GetStdHandle(STD_OUTPUT_HANDLE);
-    if (hConOutput != INVALID_HANDLE_VALUE)
-        WriteFile(hConOutput, (const char[]){"\033[0m"}, strlen("\033[0m"), NULL, NULL);
-    // Exit
-    ExitProcess(EXIT_SUCCESS);
-    return true; // To stop compiler errors
-}
-#endif
-
-int main()
-{
-    setlocale(LC_ALL, ".UTF-8");
-
-#ifdef _WIN32
-    // Set console to UTF-8
-    SetConsoleOutputCP(CP_UTF8);
-    SetConsoleCP(CP_UTF8);
-
-    // Reset terminal colour to default instead of current colour
-    printf("\033[0m");
-
-    // Set signal handler to reset terminal colour on Ctrl + C
-    SetConsoleCtrlHandler(sigHandler, TRUE);
-
-    // Get WinAPI UTF-16 args
-    int argC = 0;
-    LPWSTR* argVW = CommandLineToArgvW(GetCommandLineW(), &argC);
-    if (argVW == NULL)
+    // Print requested help then return
+    if (dviewSize(&argViews) == 2 && (
+    utils_compareLowNT(&at(&argViews, 1), "help")
+    || utils_compareLowNT(&at(&argViews, 1), "--help")
+    || utils_compareLowNT(&at(&argViews, 1), "-help")
+    || utils_compareLowNT(&at(&argViews, 1), "-h")
+    ))
     {
-        fprintf(stderr, "couldn't get UTF-16 arguments\n");
-        exit(EXIT_FAILURE);
+        utils_help();
+        return ES_SUCCESS;
     }
-    // Convert to UTF-8
-    Dstr argStringBuffer = {0};
-    for (int i = 0; i < argC; i++)
+    // Print requested version then return
+    else if (dviewSize(&argViews) == 2 && (
+    utils_compareLowNT(&at(&argViews, 1), "version")
+    || utils_compareLowNT(&at(&argViews, 1), "--version")
+    || utils_compareLowNT(&at(&argViews, 1), "-version")
+    || utils_compareLowNT(&at(&argViews, 1), "-v")
+    ))
     {
-        String8 result = {0};
-        bool valid = string8CopyNT16(&result, (UTF16_t*)(argVW[i]));
-        if (!valid)
+        utils_version();   
+        return ES_SUCCESS;
+    }
+    // Print version and mention the "help" command
+    else utils_welcome();
+
+    // 30% easter egg print chance
+    base_Time time;
+    if ((base_badRand() % 100 > 30) && base_time(&time) == ES_SUCCESS)
+    {
+        if (time.monthOfYear == 10) // October
         {
-            fprintf(stderr, "invalid Unicode character in arguments\n");
-            string8Free(&result);
-            dstrFree(&argStringBuffer);
-            LocalFree(argVW);
-            exit(EXIT_FAILURE);
+            // Green boo, orange exclamation marks
+            base_printf("\e[0;92mBooo\e[38;2;255;165;0m!!\n" COLOUR_NORMAL);
         }
-        dstrAppendV(&argStringBuffer, result);
+        else if (time.monthOfYear == 12 // December
+        || (time.monthOfYear == 1 && time.dayOfMonth <= 14)) // First fortnight of January
+        {
+            // Red ho ho ho, bold white exclamation marks
+            base_printf("\e[1;31mHo ho hoo\e[1;37m!!\n" COLOUR_NORMAL);
+        }
+        else if (time.hourOfDay == 3) // 3 in the morning
+        {
+            // Bold white
+            base_printf("\e[1;37mBooo!\n" COLOUR_NORMAL);
+        }
     }
-    // Free WinAPI UTF-16 args
-    LocalFree(argVW);
-    // Create views buffer
-    Dview argViewBuffer = {0};
-    for (int i = 0; i < argC; i++)
-        dviewAppendV(&argViewBuffer, view8MakeCopyS(& at(&argStringBuffer, i) ));
 
-#else
-    // Create views buffer
-    Dview argViewBuffer = {0};
-    for (int i = 0; i < argC; i++)
-        dviewAppendV(&argViewBuffer, view8MakeCopyNT(argV[i]));
-#endif
+    // Initialize program state
+    ProgState progState = {
+        .srcState = {0},
 
-    // Call core
-    utils_ErrorState es = core(&argViewBuffer);
+        .autoYes = false,
+        .alwaysBinaryUnits = true,
 
-    // Reset terminal colour to default
-    printf("\033[0m");
+        .diskInfo = LAYOUT_DISKINFO_DEFAULT,
+        .errorCount = 0,
+    };
+    Dbyte darrFileBytes = {0};
+    // Commands via terminal (line by line)
+    if (dviewSize(&argViews) == 1) progState.srcState.type = SRCTYPE_TERMINAL_LINES;
+    // Commands via direct program arguments
+    else if (view8StartsWithNT(&at(&argViews, 1), "-"))
+    {
+        progState.srcState.type = SRCTYPE_DIRECT_ARGS;
+        progState.srcState.pArgs = &argViews;
+    }
+    // Commands via file
+    else if (dviewSize(&argViews) == 2)
+    {
+        progState.srcState.type = SRCTYPE_FILE;
+        const View8* pPath = &at(&argViews, 1);
+        // Open file
+        handle_t fh = base_openFile(view8NT(pPath), BASE_OFMETHOD_OPEN_EXISTING, NULL);
+        if (fh == HANDLE_NONE)
+        {
+            base_stdErrorf("Failed to open file \"%s\".\n", view8NT(pPath));
+            return ES_FAILURE;
+        }
+        // Get file size
+        uint64_t size = 0;
+        if (base_getFileInfo(fh, &size, NULL) != ES_SUCCESS)
+        {
+            base_stdErrorf("Failed to get size of file \"%s\".\n", view8NT(pPath));
+            base_closeFile(&fh);
+            return ES_FAILURE;
+        }
+        // Allocate memory
+        dbyteResizeDirectly(&darrFileBytes, size);
+        // Read file
+        if (base_readFile(fh, size, dbyteData(&darrFileBytes)) != ES_SUCCESS)
+        {
+            base_stdErrorf("Failed to read file \"%s\".\n", view8NT(pPath));
+            base_closeFile(&fh);
+            return ES_FAILURE;
+        }
+        // Close file
+        if (base_closeFile(&fh) != ES_SUCCESS)
+        {
+            base_stdErrorf("Failed to close file \"%s\".\n", view8NT(pPath));
+            return ES_FAILURE;
+        }
+    }
+    // Invalid args
+    else
+    {
+        base_stdErrorf("Invalid arguments. Expected \"<FILE NAME>\""
+                        " or \"-<command 1> -[command 2]...\".\n");
+        return ES_FAILURE;
+    }
 
-    // Free memory then return
-#ifdef _WIN32
-    for (size_t i = 0; i < dstrSize(&argStringBuffer); i++)
-        string8Free(&at(&argStringBuffer, i));
-    dstrFree(&argStringBuffer);
-#endif
-    dviewFree(&argViewBuffer);
-    return (es == UTILS_ERRORSTATE_SUCCESS)? EXIT_SUCCESS : EXIT_FAILURE;
+    // Run core logic
+    es_t es = core(&argViews, &progState);
+
+    // Free memory
+    dbyteFree(&darrFileBytes);
+    dviewFree(&argViews);
+    // Return
+    return es;
 }

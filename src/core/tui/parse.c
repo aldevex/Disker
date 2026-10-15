@@ -1,39 +1,50 @@
-#include <stdlib.h>
-#include <stdio.h>
-#include "../../mem/mem.h"
-#include "../../utils/utils.h"
-#include "./cmds.h"
-#include "./tui.h"
+#include "./parse.h"
 
-// Forward declaration for quick jump in IDEs ✅🤫
-
-utils_ErrorState parseCmd(const View8* pCmdView, const Dview* pSegments,
-                            bool alwaysBinaryUnits, SrcType srcType, Cmd* pResultCmd);
-
-
-
-// For quickly passing these 3 args to functions called by parseCmd
-typedef struct SharedInfo
+void printInvalidCmdError(const View8* pReasonView, const View8* pSpecifiedTextView_optional,
+                            const View8* pCmdView, SrcType srcType)
 {
-    const View8* pCmdView;
-    SrcType srcType;
-    bool alwaysBinaryUnits;
-} SharedInfo;
+    if (srcType != SRCTYPE_TERMINAL_LINES)
+    {
+        if (pSpecifiedTextView_optional == NULL || view8Empty(pSpecifiedTextView_optional))
+        {
+            base_stdErrorf("Invalid command \"%.*s\" (%.*s).\n",
+                            pfSpread(pCmdView), pfSpread(pReasonView));
+        }
+        else
+        {
+            base_stdErrorf("Invalid command \"%.*s\" (%.*s \"%.*s\").\n",
+                            pfSpread(pCmdView), pfSpread(pReasonView),
+                            pfSpread(pSpecifiedTextView_optional));
+        }
+    }
+    else
+    {
+        if (pSpecifiedTextView_optional == NULL || view8Empty(pSpecifiedTextView_optional))
+        {
+            base_stdErrorf("Invalid command (%.*s).\n", 
+                            pfSpread(pReasonView));
+        }
+        else
+        {
+            base_stdErrorf("Invalid command (%.*s \"%.*s\").\n", 
+                            pfSpread(pReasonView), pfSpread(pSpecifiedTextView_optional));
+        }
+    }
+}
 
-// printInvalidCmdError() but takes shared info struct 🤯
-// If parse type is SRCTYPE_TERMINAL_LINES, prints: invalid command ($reason "$optionalSpecifiedText")
-//   otherwise prints: invalid command "$cmdView" ($reason "$optionalSpecifiedText")
 void printInvalidCmdErrorSh(const View8* pReasonView, const View8* pSpecifiedTextView_optional,
-                            const SharedInfo* pSharedInfo)
+                            const ParseSharedInfo* pSharedInfo)
 {
     printInvalidCmdError(pReasonView, pSpecifiedTextView_optional,
                         pSharedInfo->pCmdView, pSharedInfo->srcType);
 }
 
+
+
 // Checks if size (strToSize() result) is part of utils_SizeSig error values and prints errors accordingly
 // Returns true if the size is erroneous
-bool checkPrintErroneousSize(uint64_t val, const View8* pSeg1, const View8* pSeg2,
-                            const View8* pTooBigResultErrorText, SharedInfo* pSharedInfo)
+static bool checkPrintErroneousSize(uint64_t val, const View8* pSeg1, const View8* pSeg2,
+                            const View8* pTooBigResultErrorText, ParseSharedInfo* pSharedInfo)
 {
     if (val == (uint64_t)UTILS_SIZESIG_NO_NUMBER)
     {
@@ -63,144 +74,33 @@ bool checkPrintErroneousSize(uint64_t val, const View8* pSeg1, const View8* pSeg
     return true;
 }
 
-// Command Argument Value Type
-typedef enum AVType
+
+
+es_t parseCmd(const Dview* pSegments, size_t startI, const Dadinfo* pDeclInfos,
+                ParseSharedInfo* pSharedInfo, size_t* pAfterEndI)
 {
-    AVTYPE_NULL,
-    AVTYPE_TEXTUAL,
-    AVTYPE_NUMERIC
-} AVType;
-
-// Textual Command Argument Value Type
-typedef enum TextAVType
-{
-    TEXTAVTYPE_NULL,
-    TEXTAVTYPE_ARRAY_SPECIFIED, // Acceped values defined in array
-
-    TEXTAVTYPE_FILE_PATH,
-    TEXTAVTYPE_DIR_PATH,
-    TEXTAVTYPE_CREATABLE_DISK_PATH, // Disk path, or a creatable/existing image file path
-    TEXTAVTYPE_EXISTING_DISK_PATH, // Disk path, or an existing image file path
-} TextAVType;
-
-// Extracted Command Argument Value
-typedef struct ExtractedAV
-{
-    String8 textualVal;
-    uint64_t numericVal;
-    utils_PathType pathType; // Path type if textual value is a path
-    bool setToDefault;
-} ExtractedAV;
-
-// (Input) Command Argument Value Info
-typedef struct AVInfo
-{
-    View8 nameLowercase;
-    AVType type;
-
-    union {
-        struct {
-            TextAVType type;
-            const char *const * pExpectedVals;
-            size_t expectedValCount;
-            View8 defaultVal;
-        } textual;
-        struct {
-            bool zeroIsUnacceptable, unitExpected;
-            uint64_t defaultVal;
-        } numeric;
-    };
-    
-    ExtractedAV* pExtracted;
-} AVInfo;
-static AVInfo avinfoMakeTextual(const UTF8_t* pNameLowercase,
-                                TextAVType type, const char *const * pExpectedVals, size_t expectedValCount,
-                                const UTF8_t* pDefaultVal, ExtractedAV* pExtracted)
-{
-    return (AVInfo){
-        .nameLowercase = view8MakeCopyNT(pNameLowercase),
-        .type = AVTYPE_TEXTUAL,
-
-        .textual.type = type,
-        .textual.pExpectedVals = pExpectedVals,
-        .textual.expectedValCount = expectedValCount,
-        .textual.defaultVal = (pDefaultVal != NULL)? view8MakeCopyNT(pDefaultVal) : (View8){0},
-
-        .pExtracted = pExtracted
-    };
-}
-static AVInfo avinfoMakeNumeric(const UTF8_t* pNameLowercase,
-                                bool zeroIsUnacceptable, bool unitExpected,
-                                uint64_t defaultVal, ExtractedAV* pExtracted)
-{
-    return (AVInfo){
-        .nameLowercase = view8MakeCopyNT(pNameLowercase),
-        .type = AVTYPE_NUMERIC,
-
-        .numeric.zeroIsUnacceptable = zeroIsUnacceptable,
-        .numeric.unitExpected = unitExpected,
-        .numeric.defaultVal = defaultVal,
-
-        .pExtracted = pExtracted
-    };
-}
-
-// (Input) Command Declarator Info (Main command or subcommand (argument name), before values)
-typedef struct ADInfo
-{
-    View8 nameLowercase;
-    bool isRequired;
-    AVInfo valInfos[2];
-    size_t valCount;
-} ADInfo;
-ADInfo adinfoMake(const UTF8_t* nameLowercase, bool isRequired,
-                        const AVInfo* valInfos, size_t valCount)
-{
-    if (valCount > 2)
-    {
-        fprintf(stderr, "infoCount > 2 given to %s (infoCount = %zu)\n",
-                            __func__, valCount);
-        exit(EXIT_FAILURE);
-    }
-    ADInfo result = {
-        .nameLowercase = view8MakeCopyNT(nameLowercase),
-        .isRequired = isRequired,
-        .valCount = valCount
-    };
-    if (valInfos != NULL)
-        for (size_t i = 0; i < valCount; i++)
-            result.valInfos[i] = valInfos[i];
-    return result;
-}
-DARRAY_DEF(Dadinfo, dadinfo, ADInfo)
-
-// Validates, prints errors, and extracts all command argument declarators and values
-// Command name (first argument declarator) must be compared to the desired string before call
-//   and must be the first value in declaratorInfos
-utils_ErrorState validatePrintExtractVals(const Dview* pSegments, const Dadinfo* pDeclInfos,
-                                            SharedInfo* pSharedInfo)
-{
-utils_ErrorState result = UTILS_ERRORSTATE_FAILURE;
+es_t result = ES_FAILURE;
     String8 errMsg = {0};
     String8 errMsgSecondary = {0};
 
     // Check empty declarator infos
     if (dadinfoEmpty(pDeclInfos))
     {
-        fprintf(stderr, "empty declarator vector given to %s",
+        base_fatalErrorf("Empty declarator vector given to %s.\n",
                         __func__);
-        exit(EXIT_FAILURE);
+        base_halt(ES_FAILURE);
     }
 
     // To catch duplicate declarators
     Dbool foundDecls = {0};
     dboolFillV(&foundDecls, dadinfoSize(pDeclInfos), false);
-    for (size_t segI = 0; segI < dviewSize(pSegments); )
+    // Loop over existing segments
+    size_t localAfterEndI = 0;
+    for (size_t segI = startI; segI < dviewSize(pSegments); /**/)
     {
         size_t currentDeclInfoI = SIZE_MAX;
         // Get current declarator index
-        if (segI == 0) currentDeclInfoI = 0;
-        else for (size_t declInfoI = 1; declInfoI < dadinfoSize(pDeclInfos); declInfoI++)
+        for (size_t declInfoI = 0; declInfoI < dadinfoSize(pDeclInfos); declInfoI++)
         {
             if (utils_compareLowVw(&at(pSegments, segI), &(dadinfoDataConst(pDeclInfos)[declInfoI].nameLowercase) ))
             {
@@ -212,7 +112,7 @@ utils_ErrorState result = UTILS_ERRORSTATE_FAILURE;
         if (currentDeclInfoI == SIZE_MAX)
         {
             printInvalidCmdErrorSh(&vw("unexpected argument"), &at(pSegments, segI), pSharedInfo);
-            fret(UTILS_ERRORSTATE_FAILURE);
+            fret(ES_FAILURE);
         }
         // Check if the declarator is repeated
         const ADInfo currentDeclInfo = at(pDeclInfos, currentDeclInfoI);
@@ -222,7 +122,7 @@ utils_ErrorState result = UTILS_ERRORSTATE_FAILURE;
             string8AppendVw(&errMsg, &currentDeclInfo.nameLowercase);
             string8AppendNT(&errMsg, " argument");
             printInvalidCmdErrorSh(&vwstr(&errMsg), &at(pSegments, segI), pSharedInfo);
-            fret(UTILS_ERRORSTATE_FAILURE);
+            fret(ES_FAILURE);
         }
         // Set current declarator index to found
         else at(&foundDecls, currentDeclInfoI) = true;
@@ -239,11 +139,8 @@ utils_ErrorState result = UTILS_ERRORSTATE_FAILURE;
             }
             else string8AppendNT(&errMsg, " value");
 
-            // Declarator not printed if it's just the main command name
-            printInvalidCmdErrorSh(&vwstr(&errMsg),
-                    (currentDeclInfoI == 0)? &vw("") : &at(pSegments, segI),
-                    pSharedInfo);
-            fret(UTILS_ERRORSTATE_FAILURE);
+            printInvalidCmdErrorSh(&vwstr(&errMsg), &at(pSegments, segI), pSharedInfo);
+            fret(ES_FAILURE);
         }
         // Extract and validate current declarator values
         for (size_t valI = 0; valI < currentDeclInfo.valCount; valI++)
@@ -302,7 +199,7 @@ utils_ErrorState result = UTILS_ERRORSTATE_FAILURE;
                     {
                         if (pathType == UTILS_PATHTYPE_DISK
                         || pathType == UTILS_PATHTYPE_FILE
-                        || pathType == UTILS_PATHTYPE_MAYBE_CREATABLE)
+                        || pathType == UTILS_PATHTYPE_CREATABLE_FILE)
                             valid = true;
                     }
                     // Disk, or existing image
@@ -320,13 +217,13 @@ utils_ErrorState result = UTILS_ERRORSTATE_FAILURE;
                     string8AppendVw(&errMsg, &valInfo.nameLowercase);
                     string8AppendNT(&errMsg, " value");
                     printInvalidCmdErrorSh(&vwstr(&errMsg), &valSeg, pSharedInfo);
-                    fret(UTILS_ERRORSTATE_FAILURE);
+                    fret(ES_FAILURE);
                 }
                 else if (valInfo.pExtracted == NULL)
                 {
-                    fprintf(stderr, "(textual) valInfo.pExtracted = NULL given to %s\n",
+                    base_fatalErrorf("(textual) valInfo.pExtracted = NULL given to %s.\n",
                                     __func__);
-                    exit(EXIT_FAILURE);
+                    base_halt(ES_FAILURE);
                 }
                 else
                 {
@@ -344,12 +241,12 @@ utils_ErrorState result = UTILS_ERRORSTATE_FAILURE;
                 string8AppendNT(&errMsgSecondary, " is too big");
                 if (checkPrintErroneousSize(val, &at(pSegments, segI), &valSeg,
                                                 &vwstr(&errMsgSecondary), pSharedInfo))
-                    fret(UTILS_ERRORSTATE_FAILURE);
+                    fret(ES_FAILURE);
                 else if (valInfo.pExtracted == NULL)
                 {
-                    fprintf(stderr, "(numeric) valInfo.pExtracted = NULL given to %s\n",
+                    base_fatalErrorf("(numeric) valInfo.pExtracted = NULL given to %s.\n",
                                     __func__);
-                    exit(EXIT_FAILURE);
+                    base_halt(ES_FAILURE);
                 }
                 else
                 {
@@ -360,10 +257,16 @@ utils_ErrorState result = UTILS_ERRORSTATE_FAILURE;
         }
         // Progress main loop
         segI += (1 +currentDeclInfo.valCount);
+        // Set local after-end index
+        localAfterEndI = segI;
+        // Stop parsing if the current declarator is an early terminator
+        if (currentDeclInfo.isEarlyTerminator) break;
     }
+    // Finally save after-end index from local variable
+    *pAfterEndI = localAfterEndI;
 
     // Check missing required declarators and set default values for missing optional ones
-    for (size_t declInfoI = 1; declInfoI < dadinfoSize(pDeclInfos); declInfoI++)
+    for (size_t declInfoI = 0; declInfoI < dadinfoSize(pDeclInfos); declInfoI++)
     {
         // Skip available declarators
         if (at(&foundDecls, declInfoI)) continue;
@@ -374,7 +277,7 @@ utils_ErrorState result = UTILS_ERRORSTATE_FAILURE;
             string8AppendVw(&errMsg, &at(pDeclInfos, declInfoI).nameLowercase);
             string8AppendNT(&errMsg, " arguments");
             printInvalidCmdErrorSh(&vwstr(&errMsg), &vw(""), pSharedInfo);
-            fret(UTILS_ERRORSTATE_FAILURE);
+            fret(ES_FAILURE);
         }
         // Set default values for missing optional declarators
         for (size_t valI = 0; valI < at(pDeclInfos, declInfoI).valCount; valI++)
@@ -390,388 +293,10 @@ utils_ErrorState result = UTILS_ERRORSTATE_FAILURE;
             valInfo.pExtracted->setToDefault = true;
         }
     }
-    fret(UTILS_ERRORSTATE_SUCCESS);
+    fret(ES_SUCCESS);
 
 end:
     string8Free(&errMsg);
     string8Free(&errMsgSecondary);
     return result;
 };
-
-
-
-utils_ErrorState parseCmd(const View8* pCmdView, const Dview* pSegments,
-                            bool alwaysBinaryUnits, SrcType srcType, Cmd* pResultCmd)
-{
-    // For boolean comparison
-    static const char* boolTexts[] = {"true", "false"};
-
-    // For quickly passing these 2 args to called functions
-    SharedInfo sharedInfo = (SharedInfo){
-        .pCmdView = pCmdView,
-        .srcType = srcType,
-        .alwaysBinaryUnits = alwaysBinaryUnits
-    };
-    // Argument declarator infos for parsing (freed at end of function)
-    Dadinfo declInfos = {0};
-
-    Cmd resultCmd = {0}; // Type kept as CMDTYPE_NULL on errors
-    bool error = false; // Set to true on error discovery
-    bool internalSkip = false; // If true: CMDTYPE_NULL is a skipped command rather than an erroneous one
-    
-    // All whitespace no segments
-    if (dviewEmpty(pSegments))
-    {
-        internalSkip = true;
-    }
-
-    // Set yes
-    else if (utils_compareLowNT(&at(pSegments, 0), "autoyes"))
-    {
-        dadinfoAppendV(&declInfos, adinfoMake("autoyes", true, NULL, 0));
-
-        if (validatePrintExtractVals(pSegments, &declInfos, &sharedInfo)
-            != UTILS_ERRORSTATE_SUCCESS) error = true;
-        else
-            resultCmd = cmdMake(CMDTYPE_SET_YES, (CmdInfo){.switchValue = true});
-    }
-    else if (utils_compareLowNT(&at(pSegments, 0), "manyes"))
-    {
-        dadinfoAppendV(&declInfos, adinfoMake("manyes", true, NULL, 0));
-
-        if (validatePrintExtractVals(pSegments, &declInfos, &sharedInfo)
-            != UTILS_ERRORSTATE_SUCCESS) error = true;
-        else
-            resultCmd = cmdMake(CMDTYPE_SET_YES, (CmdInfo){.switchValue = false});
-    }
-    
-    // Set binary
-    else if (utils_compareLowNT(&at(pSegments, 0), "binary"))
-    {
-        dadinfoAppendV(&declInfos, adinfoMake("binary", true, NULL, 0));
-
-        if (validatePrintExtractVals(pSegments, &declInfos, &sharedInfo)
-            != UTILS_ERRORSTATE_SUCCESS) error = true;
-        else
-            resultCmd = cmdMake(CMDTYPE_SET_BINARY, (CmdInfo){.switchValue = true});
-    }
-    else if (utils_compareLowNT(&at(pSegments, 0), "decimal"))
-    {
-        dadinfoAppendV(&declInfos, adinfoMake("decimal", true, NULL, 0));
-
-        if (validatePrintExtractVals(pSegments, &declInfos, &sharedInfo)
-            != UTILS_ERRORSTATE_SUCCESS) error = true;
-        else
-            resultCmd = cmdMake(CMDTYPE_SET_BINARY, (CmdInfo){.switchValue = false});
-    }
-
-    // help command
-    else if (utils_compareLowNT(&at(pSegments, 0), "help"))
-    {
-        dadinfoAppendV(&declInfos, adinfoMake("help", true, NULL, 0));
-
-        if (validatePrintExtractVals(pSegments, &declInfos, &sharedInfo)
-            != UTILS_ERRORSTATE_SUCCESS) error = true;
-        else
-            resultCmd = cmdMake(CMDTYPE_HELP, (CmdInfo){0});
-    }
-
-    // Version command
-    else if (utils_compareLowNT(&at(pSegments, 0), "version"))
-    {
-        dadinfoAppendV(&declInfos, adinfoMake("version", true, NULL, 0));
-
-        if (validatePrintExtractVals(pSegments, &declInfos, &sharedInfo)
-            != UTILS_ERRORSTATE_SUCCESS) error = true;
-        else
-            resultCmd = cmdMake(CMDTYPE_VERSION, (CmdInfo){0});
-    }
-
-    // Clear screen command
-    else if (utils_compareLowNT(&at(pSegments, 0), "cls"))
-    {
-        dadinfoAppendV(&declInfos, adinfoMake("cls", true, NULL, 0));
-
-        if (validatePrintExtractVals(pSegments, &declInfos, &sharedInfo)
-            != UTILS_ERRORSTATE_SUCCESS) error = true;
-        else
-            resultCmd = cmdMake(CMDTYPE_CLS, (CmdInfo){0});
-    }
-
-    // Select
-    else if (utils_compareLowNT(&at(pSegments, 0), "select"))
-    {
-        // Select partition
-        if (dviewSize(pSegments) >= 2
-        && utils_compareLowNT(&at(pSegments, 1), "part"))
-        {
-        }
-        // Select disk
-        else
-        {
-            // e.g. select x.img
-            ExtractedAV path = {0}, rawImgSectorSize = {0};
-
-            // If only one segment is in the array it will print an error
-            dadinfoAppendV(&declInfos, adinfoMake("select", true, (AVInfo[]){
-                avinfoMakeTextual("disk path", TEXTAVTYPE_CREATABLE_DISK_PATH, NULL, 0, NULL, &path)
-            }, 1));
-            dadinfoAppendV(&declInfos, adinfoMake("sectsize", false, (AVInfo[]){
-                avinfoMakeNumeric("sector size", true, true, utils_strToSizeVw(&vw("512b"), true, true, true), &rawImgSectorSize)
-            }, 1));
-
-            if (validatePrintExtractVals(pSegments, &declInfos, &sharedInfo)
-                != UTILS_ERRORSTATE_SUCCESS) error = true;
-            else
-            {
-                // Set command type
-                resultCmd.type = CMDTYPE_SELECT_DISK;
-                // Set geometry type
-                if (path.pathType == UTILS_PATHTYPE_FILE
-                || path.pathType == UTILS_PATHTYPE_MAYBE_CREATABLE)
-                {
-                    resultCmd.info.selectDisk.type = df_fileTypeToDiskFormat(
-                        utils_getFileType(&vwstr(&path.textualVal))
-                    );
-                }
-                else if (path.pathType == UTILS_PATHTYPE_DISK
-                || path.pathType == UTILS_PATHTYPE_PART)
-                {
-                    resultCmd.info.selectDisk.type = DF_TYPE_RAW_DISK;
-                }
-                else
-                {
-                    fprintf(stderr, "invalid path type (%u) in %s,"
-                            " validatePrintExtractVals() should've returned an error\n",
-                            path.pathType, __func__);
-                    exit(EXIT_FAILURE);
-                }
-                // Set path
-                cmdInfoSelectDiskAdoptPath(&resultCmd.info, &path.textualVal);
-                // Validate geometry type exists
-                if (resultCmd.info.selectDisk.type == DF_TYPE_UNKNOWN)
-                {
-                    printInvalidCmdErrorSh(&vw("unknown image file format"), &vw(""), &sharedInfo);
-                    cmdInfoFree(&resultCmd.info); // Free adopted path buffer
-                    error = true;
-                }
-                // Set raw image sector size
-                else if (resultCmd.info.selectDisk.type == DF_TYPE_RAW_IMAGE)
-                {
-                    resultCmd.info.selectDisk.rawImgSectorSize = rawImgSectorSize.numericVal;
-                }
-                // Error if sector size is provided for non-raw-image
-                else if (!rawImgSectorSize.setToDefault)
-                {
-                    printInvalidCmdErrorSh(&vw("size given for non-raw image or real disk"), &vw(""), &sharedInfo);
-                    cmdInfoFree(&resultCmd.info); // Free adopted path buffer
-                    error = true;
-                }
-            }
-        }
-    }
-
-    // Save
-    else if (utils_compareLowNT(&at(pSegments, 0), "save"))
-    {
-        dadinfoAppendV(&declInfos, adinfoMake("save", true, NULL, 0));
-
-        if (validatePrintExtractVals(pSegments, &declInfos, &sharedInfo)
-            != UTILS_ERRORSTATE_SUCCESS) error = true;
-        else
-            resultCmd = cmdMake(CMDTYPE_SAVE, (CmdInfo){0});
-    }
-
-    // Close
-    else if (utils_compareLowNT(&at(pSegments, 0), "close"))
-    {
-        dadinfoAppendV(&declInfos, adinfoMake("close", true, NULL, 0));
-
-        if (validatePrintExtractVals(pSegments, &declInfos, &sharedInfo)
-            != UTILS_ERRORSTATE_SUCCESS) error = true;
-        else
-            resultCmd = cmdMake(CMDTYPE_CLOSE, (CmdInfo){0});
-    }
-
-    // Stop, exit, quit
-    else if (utils_compareLowNT(&at(pSegments, 0), "stop")
-            || utils_compareLowNT(&at(pSegments, 0), "exit")
-            || utils_compareLowNT(&at(pSegments, 0), "quit"))
-    {
-        if (dviewSize(pSegments) > 1)
-        {
-            printInvalidCmdErrorSh(&vw("unexpected arguments"), &vw(""), &sharedInfo);
-            error = true;
-        }
-        else resultCmd = cmdMake(CMDTYPE_EXIT, (CmdInfo){0});
-    }
-
-    // Edit disk ("disk" command)
-    else if (utils_compareLowNT(&at(pSegments, 0), "disk"))
-    {
-        // e.g. disk size 40GiB sectsize 4096B align 1MiB  scheme GPT parts 256 sparse false
-        ExtractedAV size = {0}, sectorSize = {0}, alignment = {0},
-                    scheme = {0}, parts = {0}, sparse = {0};
-
-        dadinfoAppendV(&declInfos, adinfoMake("disk", true, (AVInfo[]){}, 0));
-        dadinfoAppendV(&declInfos, adinfoMake("size", false, (AVInfo[]){
-            avinfoMakeNumeric("disk size", false, true, UTILS_SIZESIG_NO_NUMBER, &size)
-        }, 1));
-        dadinfoAppendV(&declInfos, adinfoMake("sectsize", false, (AVInfo[]){
-            avinfoMakeNumeric("sector", true, true, UTILS_SIZESIG_NO_NUMBER, &sectorSize)
-        }, 1));
-        dadinfoAppendV(&declInfos, adinfoMake("align", false, (AVInfo[]){
-            avinfoMakeNumeric("alignment", true, true, UTILS_SIZESIG_NO_NUMBER, &alignment)
-        }, 1));
-
-        static const char* schemeTexts[] = {"mbr", "gpt"};
-        dadinfoAppendV(&declInfos, adinfoMake("scheme", false, (AVInfo[]){
-            avinfoMakeTextual("scheme type", TEXTAVTYPE_ARRAY_SPECIFIED, schemeTexts, 2, "", &scheme)
-        }, 1));
-        dadinfoAppendV(&declInfos, adinfoMake("parts", false, (AVInfo[]){
-            avinfoMakeNumeric("partition count", false, false, UTILS_SIZESIG_NO_NUMBER, &parts)
-        }, 1));
-        dadinfoAppendV(&declInfos, adinfoMake("sparse", false, (AVInfo[]){
-            avinfoMakeTextual("sparse-file boolean", TEXTAVTYPE_ARRAY_SPECIFIED, boolTexts, 2, "", &sparse)
-        }, 1));
-
-        // Gotta print error manually because all arguments are optional
-        if (dviewSize(pSegments) == 1)
-        {
-            printInvalidCmdErrorSh(&vw("no operation"), &vw(""), &sharedInfo);
-            error = true;
-        }
-        else if (validatePrintExtractVals(pSegments, &declInfos, &sharedInfo)
-            != UTILS_ERRORSTATE_SUCCESS) error = true;
-        else
-        {
-            resultCmd = cmdMake(CMDTYPE_EDIT_DISK, (CmdInfo){.editDisk=(CmdInfoEditDisk){
-                .size = size.numericVal,
-                .sectorSize = sectorSize.numericVal,
-                .alignment = alignment.numericVal,
-                .scheme = (utils_compareLowNT(&vwstr(&scheme.textualVal), "mbr"))? SCHEME_TYPE_MBR : SCHEME_TYPE_GPT,
-                .partCount = parts.numericVal,
-                .sparse = (
-                    (string8Empty(&sparse.textualVal))? UTILS_TRIBOOL_NONE
-                        : (at(&sparse.textualVal, 0) == 't')? UTILS_TRIBOOL_TRUE
-                            : UTILS_TRIBOOL_FALSE
-                )
-            }});
-            string8Free(&scheme.textualVal);
-            string8Free(&sparse.textualVal);
-        }
-    }
-
-    // Edit partition ("part" command)
-    // else if (utils_compareLowNT(&at(pSegments, 0), "part"))
-    // {
-    //     // e.g. part 1 size 8GiB type FAT32
-    //     ExtractedAV part = {0}, size = {0}, type = {0};
-
-    //     dadinfoAppendV(&declInfos, adinfoMake("part", true, (AVInfo[]){
-    //         avinfoMakeNumeric("partition number (1+)", true, false, 0, &part)
-    //     }, 1));
-    //     dadinfoAppendV(&declInfos, adinfoMake("size", false, (AVInfo[]){
-    //         avinfoMakeNumeric("partition size", true, true, 0, &size)
-    //     }, 1));
-    //     static const char* partTypeTexts[] = {"none", "fat32"};
-    //     dadinfoAppendV(&declInfos, adinfoMake("type", false, (AVInfo[]){
-    //         avinfoMakeTextual("partition type", TEXTAVTYPE_ARRAY_SPECIFIED, partTypeTexts, 1, "none", &type)
-    //     }, 1));
-
-    //     if (validatePrintExtractVals(pSegments, &declInfos, &sharedInfo)
-    //         != UTILS_ERRORSTATE_SUCCESS) error = true;
-    //     else
-    //     {
-    //         resultCmd = cmdMake(CMDTYPE_EDIT_PART, (CmdInfo){.editPart=(CmdInfoEditPart){
-    //             .partNum = part.numericVal,
-    //             .size = size.numericVal,
-    //             .type = (
-    //                 (utils_compareLowNT(&vwstr(&type.textualVal), "none"))? FS_TYPE_NULL
-    //                     : (utils_compareLowNT(&vwstr(&type.textualVal), "fat32"))? FS_TYPE_FAT32
-    //                         : FS_TYPE_UNKNOWN
-    //             )
-    //         }});
-    //         //if (resultCmd.type == FS_TYPE_UNKNOWN) error something whatever
-    //         string8Free(&type.textualVal);
-    //     }
-    // }
-
-    // Easter eggs
-    // parseCmd() isn't supposed to print directly
-    //   but I don't want easter eggs to leak into outside code
-    else if (dviewSize(pSegments) == 4
-    && utils_compareLowNT(&at(pSegments, 0), u8"who")
-    && utils_compareLowNT(&at(pSegments, 1), u8"do")
-    && utils_compareLowNT(&at(pSegments, 2), u8"you")
-    && utils_compareLowNT(&at(pSegments, 3), u8"obey"))
-    {
-        printf(u8"The UEFI spec we listen and obey 🫡"
-                " https://uefi.org/sites/default/files/resources/UEFI_Spec_Final_2.11.pdf" "\n");
-        internalSkip = true;
-    }
-    else if (dviewSize(pSegments) == 2
-    && utils_compareLowNT(&at(pSegments, 0), u8"Помози")
-    && utils_compareLowNT(&at(pSegments, 1), u8"ми"))
-    {
-        printf(u8"Не причам српски 😔\n");
-        internalSkip = true;
-    }
-    else if (dviewSize(pSegments) == 2
-    && utils_compareLowNT(&at(pSegments, 0), u8"Βοηθήστε")
-    && utils_compareLowNT(&at(pSegments, 1), u8"με"))
-    {
-        printf(u8"Δεν μιλάω Ελληνικά 😔\n");
-        internalSkip = true;
-    }
-    else if (dviewSize(pSegments) == 2
-    && utils_compareLowNT(&at(pSegments, 0), "aide")
-    && utils_compareLowNT(&at(pSegments, 1), "moi"))
-    {
-        printf(u8"je parle pas français 😔\n");
-        internalSkip = true;
-    }
-    else if (dviewSize(pSegments) == 3
-    && utils_compareLowNT(&at(pSegments, 0), "whos")
-    && utils_compareLowNT(&at(pSegments, 1), "big")
-    && utils_compareLowNT(&at(pSegments, 2), "m"))
-    {
-        printf("i am a compiler\n");
-        internalSkip = true;
-    }
-    else if (dviewSize(pSegments) == 2
-    && utils_compareLowNT(&at(pSegments, 0), "big")
-    && utils_compareLowNT(&at(pSegments, 1), "j"))
-    {
-        printf("mbr is shit\n");
-        internalSkip = true;
-    }
-    else if (dviewSize(pSegments) == 2
-    && utils_compareLowNT(&at(pSegments, 0), "big")
-    && utils_compareLowNT(&at(pSegments, 1), "k"))
-    {
-        printf("well lets not talk abt it\n");
-        internalSkip = true;
-    }
-    else if (dviewSize(pSegments) == 2
-    && utils_compareLowNT(&at(pSegments, 0), "opsec"))
-    {
-        if (utils_compareLowNT(&at(pSegments, 1), "enable"))
-            printf("\033[92m");
-        else
-            printf("\033[0m");
-        internalSkip = true;
-    }
-    
-    // Unsupported command
-    if (!internalSkip && !error && resultCmd.type == CMDTYPE_NULL)
-    {
-        printInvalidCmdErrorSh(&vw("unsupported command"), &vw(""), &sharedInfo);
-        error = true;
-    }
-
-    // Return
-    dadinfoFree(&declInfos);
-    *pResultCmd = resultCmd;
-    return (!error)? UTILS_ERRORSTATE_SUCCESS : UTILS_ERRORSTATE_FAILURE;
-}

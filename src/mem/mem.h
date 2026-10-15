@@ -14,18 +14,6 @@
 #define pfSpread(pTextualObject)\
     (int)((pTextualObject)->_count), (pTextualObject)->_pBuffer
 
-// Free, return
-#define fret(x) do {\
-    result = x;\
-    goto end;\
-} while (0)
-// Free, return
-#define fretvoid do {\
-    goto end;\
-} while (0)
-
-// Length of array
-#define lenof(x) ( sizeof(x)/sizeof(x[0]) )
 // Get typeof extension if it exists
 #if defined(__GNUC__) || defined(__clang__)
     #define _memTypeof __typeof__

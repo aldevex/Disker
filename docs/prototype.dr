@@ -5,13 +5,16 @@ autoyes # Opposite "manyes"
 binary # Opposite "decimal"
 
 # Select disk to operate on (via path or symbol pointing to a partition or disk or image file)
-select D
+select D:/
 
 # If selecting an image that doesn't save sector size (e.g. ".img"),
 #   you can specify sector size on "select"
 # select x.img sectsize 4096
 
-# Set disk layout
+# Use "create" to always create a new image file
+# create eee.vhd
+
+# Set new/Edit disk layout
 disk size 32GiB sectsize 4096B align 1MiB \
     scheme GPT parts 256 sparse false
 # Available schemes: MBR, GPT, and Hybrid
@@ -25,7 +28,7 @@ part 3  size auto        label "Data partition"  type exfat
 
 # Set MBR bootloader code
 boot mbr boot_mbr.bin
-# Also available: mbr+ (binary copied into mbr and after) and postmbr (only after mbr)
+# Also available: "boot align <file name>" (binary copied into empty alignment space after MBR and GPT)
 
 # Select partition to operate on in bootloader and filesystem commands
 select part 1

@@ -1,16 +1,12 @@
 #pragma once
-#include <stddef.h>
-#include <stdint.h>
-#include <stdbool.h>
+#include "../base/core.h"
 
 // To stop Clang from crying about unused static inline functions
 #if defined(__GNUC__) || defined(__clang__)
-    #define _mem_FUNC_ATTRIB __attribute__((unused))
+    #define _mem_FUNC_ATTRIB ATTRIB_UNUSED
 #else
     #define _mem_FUNC_ATTRIB
 #endif
-
-typedef unsigned char byte_t;
 
 // Generic Structure
 // _pBytes and _itemsCount must map 1:1 to all API structures

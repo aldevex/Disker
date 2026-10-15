@@ -1,57 +1,129 @@
-Codebase explanation (src/):
 
-# Memory (mem/):
-    - "darray.h": Dynamic array code.
-    - "string.h": Dynamic string and string view code.
-    - "mem.h": Includes the aforementioned files + some helper macros.
-    - "core.h" & "core_imp.c": Core memory operations.
+Naming convention:
 
-# Generic utility code (utils/):
-    Contents are self explanatory.
+- Base types:               lowercase suffixed by "_t".
+- Types:                    PascalCase.
+- Variables and functions:  camelCase.
+- Constants:                UPPER_SNAKE_CASE.
 
-# Production program resources (res/):
-    Pictures and other resources for the production program to use.
-
-# Disk and disk image focused code (disk/):
-Disk and various image file formats (format/):
-    - "format.h" & "format.c": Includes file format enum & format variant structure.
-    - "raw.h": Code for raw disk images and real disks.
-Disk schemes (scheme/):
-    - "scheme.h": Includes scheme enum & total scheme data structure.
-    - "mbr.h": MBR scheme structures.
-    - "mbr_default.nasm": Default MBR sector assembly code.
-    - "mbr_default.h": Embedded default MBR sector binary from assembly.
-    - "gpt.h": GPT scheme structures.
-File systems (fs/):
-    - "fs.h": Includes file system enum & file system variant structure.
-    - "fat.h": FAT structures.
-Total disk info collection ("info.h" & "info.c"):
-    Collection of all disk/image information to be used in program state.
-
-# Core (core/):
-Operation commands (cmds/):
-TUI core (tui/):
-    - "entry.c": Entry point. Also the exit point if exiting without critical errors.
-    - "state.c": Core program state logic.
-    - "parse.c": Command parsing implementation.
-    - "cmds.h": Command structures and function declarations.
-    - "error.c": TUI error printing implementation.
-    - "tui.h": External declarations of TUI functions used outside their C files.
+- Files & directories:      lowercase, underscores ("_") for spacing.
+- Program TUI output texts must be gramatically correct and with punctuation.
 
 
 
-Program pipeline explanation:
+Data:
 
-# TUI pipeline:
-    - parseCmd validates input grammar and validates input arguments
-        according to expected numeric and textual values.
-    - getRunCmds extracts commands one by one
-        from direct arguments, a file, or the commandline,
-        then validates them relative to the current program state,
-        then apply the command to the program state and/or target disk state object,
-        it actually saves the target disk object to the disk/image on "save" commands.
-        The function must also open and lock input files
-        directly after each command for a predictable successful save.
+- Variables may not be defined globally.
 
-# GUI pipeline:
-    Not implemented yet.
+- Variables may not be uninitialized.
+
+
+
+Comments:
+
+- Functions:
+    1. Description of the function's task
+        and final output (be it writing to a variable or to program environment (e.g. file, terminal))
+    2. Details about unclear parameters (when the parameter's name doesn't fully explain how the argument is *read*)
+    3. External writes (writing to data pointed-at by arguments)
+    4. Return value (if not void)
+
+- Structs, Enums, Macro-based Enums, & Typedefs:
+    1. Description of the type's task
+    2. Descriptions (written inside the type definition "{}") for each field's task and unclear usage
+
+- Macros:
+    1. Description of the macro's task
+    2. Description of the macro's content
+
+
+
+Textual signature (depending on available space):
+
+- If 1-6 characters available: "D", "Dr", "Dkr", "Dskr", "Diskr", "Disker".
+
+- If 7+ characters available: "Disker" padded by spaces, null terminators, or other characters,
+                                depending on the medium's specification.
+
+- In a UUID: "DSKR-DR-DR-DR-DISKER" encoded as UTF-8 bytes
+            (44534B52-4452-4452-4452-4449534B4552)
+
+- The signature must be inserted wherever possible to satisfy devs' ego.
+
+
+
+Platform-dependancy:
+
+- The core code (contents of "src/", excluding "src/base")
+    must not contain platform-specific implementations,
+    and must take processor endianness in consideration.
+
+- The codebase primarily uses the UTF-8 encoding for textual data.
+
+
+
+Program pipeline:
+
+- The first (platform-specific) entry point (named "main" for a common platform environment)
+    initializes base program state and environment, and calls the second entry point.
+
+- The second (non-platform-specific) entry point (named "entry" in the current code)
+    initializes core-logic program state and environment, and calls the core logic function.
+
+- The core function (named "core" in the current code) and its segmented per-command functions
+    run core program logic, and affect the state and environment depending on user input.
+    They call functions in a modular manner depending on the given data
+        (e.g. disk image file format, in-partition disk layouts).
+    They validate user input relative to the program state
+        only if the validation isn't layout-specific and would be the exact same for all layouts
+        (e.g. closing an inexistent disk is invalid for any disk/image type)
+
+- The program may not write directly to disk/image unless explicitly told to by user.
+
+
+
+Codebase files outside "src/":
+
+# "docs/": Internal disker developer documentation.
+    - "codebase.txt": Codebase explanation.
+    - "todo.txt": Todo list for the project.
+    - "prototype.dr": Disker script prototype for target program functionality to implement.
+
+# "specs/": Specifications for disk image file formats and file systems
+            that don't have an official specification (or have an extremely bad one)
+            on behalf of the original creators to aid them in their work.
+
+# "precomp/": Pre-compilation code, must be compiled and ran before the main program code.
+    - "embed.c": Embeds files into C headers in the main code.
+
+# "prod/": Contains the program binary and the files it requires.
+            Contents must be fetched via compile-time scripts, ***NOT manually edited***.
+    - "data/": Program data files.
+    - "docs/": User-targeted documentation.
+
+# "res/": Files required by the program.
+            Copied into "prod/" by compile-time scripts.
+    - "windows.ico": Windows icon for the binary.
+    - "windows.rc": Windows code referencing files to be embedded into the binary.
+    - "default_mbr.nasm": NASM x86-16 assembly for the default value of a newly created MBR sector.
+    - "config.ini": Disk-persistent variables used by the program itself at runtime.
+
+
+
+Codebase files inside "src/" (main program code):
+
+# "base/": Base and platform-specific definitions.
+            The core base header is "core.h", other headers are for secondary base definitions.
+            Implementation (".c") files must be prefixed by "impl_".
+
+# "mem/": Memory managment.
+    - "core.h" & "core_imp.c": Core internal memory definitions.
+    - "darray.h": Dynamic array.
+    - "string.h": Dynamic string and constant string view.
+    - "mem.h": Interface header, includes the aforementioned files + some helper macros.
+
+# "core/": Program core.
+    - "utils/": Generic utility definitions.
+    - "disk/": Disk-revolved and layout-specific definitions.
+    - "tui/": Core logic for the TUI program.
+    - "gui/": Core logic for the GUI program.

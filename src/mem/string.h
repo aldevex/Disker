@@ -1,10 +1,4 @@
 #pragma once
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <stdbool.h>
-#include <uchar.h>
-#include <string.h>
 #include "./core.h"
 #include "./darray.h"
 
@@ -129,6 +123,7 @@ static inline _mem_FUNC_ATTRIB void stringPrefix##ResizeDirectly(stringName* pSt
         _memStrRealloc(&pString->_generic, newSize, sizeof(Type),\
                 &_stringNull##genericSuffix);\
     pString->_count = newSize;\
+    pString->_pBuffer[newSize] = (Type)0;\
 }\
 \
 /* Addition */\
@@ -252,12 +247,12 @@ static inline _mem_FUNC_ATTRIB viewName stringPrefix##SubStr(const stringName* p
     /* Check bad arguments */\
     if (startI +count > pString->_count)\
     {\
-        fprintf(stderr, "startI +count = %zu > pString->_count "\
-                        "(startI = %zu count = %zu) "\
-                        "given to %s for String %p\n",\
-                        startI +count, startI, count,\
-                        __func__, pString);\
-        exit(EXIT_FAILURE);\
+        base_fatalErrorf("startI +count = %zu > pString->_count "\
+                    "(startI = %zu count = %zu) "\
+                    "given to %s for String %p\n",\
+                    startI +count, startI, count,\
+                    __func__, pString);\
+        base_halt(ES_FAILURE);\
     }\
     return (viewName){\
         ._pBuffer = pString->_pBuffer +startI,\
@@ -399,9 +394,9 @@ static inline _mem_FUNC_ATTRIB void viewPrefix##Resize(viewName* pView, size_t n
 {\
     if (newSize > pView->_count)\
     {\
-        fprintf(stderr, "newSize = %zu > pView->_count given to %s for View %p\n",\
-                        newSize, __func__, pView);\
-        exit(EXIT_FAILURE);\
+        base_fatalErrorf("newSize = %zu > pView->_count given to %s for View %p\n",\
+                    newSize, __func__, pView);\
+        base_halt(ES_FAILURE);\
     }\
     if (newSize == pView->_count) return;\
     pView->_count = newSize;\
@@ -421,9 +416,9 @@ static inline _mem_FUNC_ATTRIB void viewPrefix##EraseStart(viewName* pView, size
 {\
     if (count > pView->_count)\
     {\
-        fprintf(stderr, "count = %zu > pView->_count given to %s for View %p\n",\
-                        count, __func__, pView);\
-        exit(EXIT_FAILURE);\
+        base_fatalErrorf("count = %zu > pView->_count given to %s for View %p\n",\
+                    count, __func__, pView);\
+        base_halt(ES_FAILURE);\
     }\
     pView->_pBuffer += count;\
     pView->_count -= count;\
@@ -432,9 +427,9 @@ static inline _mem_FUNC_ATTRIB void viewPrefix##EraseEnd(viewName* pView, size_t
 {\
     if (count > pView->_count)\
     {\
-        fprintf(stderr, "count = %zu > pView->_count given to %s for View %p\n",\
-                        count, __func__, pView);\
-        exit(EXIT_FAILURE);\
+        base_fatalErrorf("count = %zu > pView->_count given to %s for View %p\n",\
+                    count, __func__, pView);\
+        base_halt(ES_FAILURE);\
     }\
     pView->_count -= count;\
     pView->_terminated = false;\
@@ -465,9 +460,9 @@ static inline _mem_FUNC_ATTRIB const Type* viewPrefix##NT(const viewName* pView)
 {\
     if (!pView->_terminated)\
     {\
-        fprintf(stderr, "pView->_terminated == false given to %s for View %p\n",\
-                        __func__, pView);\
-        exit(EXIT_FAILURE);\
+        base_fatalErrorf("pView->_terminated == false given to %s for View %p\n",\
+                    __func__, pView);\
+        base_halt(ES_FAILURE);\
     }\
     return pView->_pBuffer;\
 }\
@@ -480,12 +475,12 @@ static inline _mem_FUNC_ATTRIB viewName viewPrefix##SubStr(const viewName* pView
     /* Check bad arguments */\
     if (startI +count > pView->_count)\
     {\
-        fprintf(stderr, "startI +count = %zu > pView->_count "\
-                        "(startI = %zu count = %zu) "\
-                        "given to %s for View %p\n",\
-                        startI +count, startI, count,\
-                        __func__, pView);\
-        exit(EXIT_FAILURE);\
+        base_fatalErrorf("startI +count = %zu > pView->_count "\
+                    "(startI = %zu count = %zu) "\
+                    "given to %s for View %p\n",\
+                    startI +count, startI, count,\
+                    __func__, pView);\
+        base_halt(ES_FAILURE);\
     }\
     return (viewName){\
         ._pBuffer = pView->_pBuffer +startI,\
@@ -654,9 +649,6 @@ static inline _mem_FUNC_ATTRIB size_t viewPrefix##RevFindVw(const viewName* pVie
 
 
 
-typedef char UTF8_t;
-typedef char16_t UTF16_t;
-
 STRING_DEF(String8, string8, View8, view8, 8, UTF8_t)
 STRING_DEF(String16, string16, View16, view16, 16, UTF16_t)
 
@@ -664,6 +656,12 @@ DARRAY_DEF(Dstr, dstr, String8)
 DARRAY_DEF(Dview, dview, View8)
 
 
+
+static inline UTF8_t toLowerA(UTF8_t asciiChar)
+{
+    if (asciiChar < 'A' || asciiChar > 'Z') return asciiChar;
+    else return (asciiChar | 32);
+}
 
 static const UTF16_t _stringWhitespaceChars16[] = {
     u'\t',     // U+0009 Horizontal Tab
@@ -1099,15 +1097,15 @@ static inline _mem_FUNC_ATTRIB bool string16CopyPS8(String16* pDstString, const 
 //     // Check args
 //     if (srcSize == 0)
 //     {
-//         fprintf(stderr, "srcSize = 0 given to %s for pSrc %p\n",
-//                         __func__, pSrc);
-//         exit(EXIT_FAILURE);
+//         base_fatalErrorf("srcSize = 0 given to %s for pSrc %p\n",
+//                    __func__, pSrc);
+//         base_halt(ES_FAILURE);
 //     }
 //     else if (deliSize == 0)
 //     {
-//         fprintf(stderr, "deliSize = 0 given to %s for pDelimiter %p\n",
-//                         __func__, pDelimiter);
-//         exit(EXIT_FAILURE);
+//         base_fatalErrorf("deliSize = 0 given to %s for pDelimiter %p\n",
+//                    __func__, pDelimiter);
+//         base_halt(ES_FAILURE);
 //     }
 //     Dview result = {0};
 //     size_t startI = 0;
